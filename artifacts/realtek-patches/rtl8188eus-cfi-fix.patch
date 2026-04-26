@@ -1,0 +1,162 @@
+diff --git a/Makefile b/Makefile
+index 2aa7eef..e368cd9 100755
+--- a/Makefile
++++ b/Makefile
+@@ -1,4 +1,5 @@
+ EXTRA_CFLAGS += $(USER_EXTRA_CFLAGS) -fno-pie
++EXTRA_CFLAGS += -DCONFIG_LITTLE_ENDIAN -DCONFIG_IOCTL_CFG80211 -DRTW_USE_CFG80211_STA_EVENT -DCONFIG_PLATFORM_ANDROID -fno-pic
+ EXTRA_CFLAGS += -O1
+ #EXTRA_CFLAGS += -O3
+ EXTRA_CFLAGS += -Wno-unused-variable
+@@ -1113,7 +1114,7 @@ EXTRA_CFLAGS += -DCONFIG_P2P_IPS -DCONFIG_PLATFORM_ANDROID
+ # Enable this for Android 5.0
+ EXTRA_CFLAGS += -DCONFIG_RADIO_WORK
+ EXTRA_CFLAGS += -DRTW_VENDOR_EXT_SUPPORT
+-EXTRA_CFLAGS += -DRTW_ENABLE_WIFI_CONTROL_FUNC
++EXTRA_CFLAGS += 
+ ARCH ?= arm
+ 
+ CROSS_COMPILE := /mnt/newdisk/android_sdk/nvidia_tk1/android_L/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8/bin/arm-eabi-
+@@ -1150,7 +1151,7 @@ endif
+ 
+ ifeq ($(CONFIG_PLATFORM_ACTIONS_ATM705X), y)
+ EXTRA_CFLAGS += -DCONFIG_LITTLE_ENDIAN
+-#EXTRA_CFLAGS += -DRTW_ENABLE_WIFI_CONTROL_FUNC
++#EXTRA_CFLAGS += 
+ # default setting for Android 4.1, 4.2, 4.3, 4.4
+ EXTRA_CFLAGS += -DCONFIG_PLATFORM_ACTIONS_ATM705X
+ EXTRA_CFLAGS += -DCONFIG_CONCURRENT_MODE
+@@ -1399,7 +1400,7 @@ endif
+ ifeq ($(CONFIG_PLATFORM_TEGRA3_CARDHU), y)
+ EXTRA_CFLAGS += -DCONFIG_LITTLE_ENDIAN
+ # default setting for Android 4.1, 4.2
+-EXTRA_CFLAGS += -DRTW_ENABLE_WIFI_CONTROL_FUNC
++EXTRA_CFLAGS += 
+ EXTRA_CFLAGS += -DCONFIG_CONCURRENT_MODE
+ EXTRA_CFLAGS += -DCONFIG_IOCTL_CFG80211 -DRTW_USE_CFG80211_STA_EVENT
+ ARCH := arm
+@@ -1411,7 +1412,7 @@ endif
+ ifeq ($(CONFIG_PLATFORM_TEGRA4_DALMORE), y)
+ EXTRA_CFLAGS += -DCONFIG_LITTLE_ENDIAN
+ # default setting for Android 4.1, 4.2
+-EXTRA_CFLAGS += -DRTW_ENABLE_WIFI_CONTROL_FUNC
++EXTRA_CFLAGS += 
+ EXTRA_CFLAGS += -DCONFIG_CONCURRENT_MODE
+ EXTRA_CFLAGS += -DCONFIG_IOCTL_CFG80211 -DRTW_USE_CFG80211_STA_EVENT
+ ARCH := arm
+@@ -1461,7 +1462,7 @@ EXTRA_CFLAGS += -DCONFIG_LITTLE_ENDIAN -DCONFIG_PLATFORM_ANDROID -DCONFIG_PLATFO
+ EXTRA_CFLAGS += -DCONFIG_IOCTL_CFG80211 -DRTW_USE_CFG80211_STA_EVENT
+ EXTRA_CFLAGS += -DCONFIG_CONCURRENT_MODE
+ # default setting for Power control
+-EXTRA_CFLAGS += -DRTW_ENABLE_WIFI_CONTROL_FUNC
++EXTRA_CFLAGS += 
+ EXTRA_CFLAGS += -DRTW_SUPPORT_PLATFORM_SHUTDOWN
+ # default setting for Special function
+ ARCH := arm
+@@ -1472,7 +1473,7 @@ endif
+ 
+ ifeq ($(CONFIG_PLATFORM_ARM_RK3066), y)
+ EXTRA_CFLAGS += -DCONFIG_PLATFORM_ARM_RK3066
+-EXTRA_CFLAGS += -DRTW_ENABLE_WIFI_CONTROL_FUNC
++EXTRA_CFLAGS += 
+ EXTRA_CFLAGS += -DCONFIG_LITTLE_ENDIAN
+ EXTRA_CFLAGS += -DCONFIG_CONCURRENT_MODE
+ EXTRA_CFLAGS += -DCONFIG_IOCTL_CFG80211
+diff --git a/include/usb_ops_linux.h b/include/usb_ops_linux.h
+index bf59ca0..dd4665e 100644
+--- a/include/usb_ops_linux.h
++++ b/include/usb_ops_linux.h
+@@ -89,7 +89,7 @@ int usb_write16(struct intf_hdl *pintfhdl, u32 addr, u16 val);
+ int usb_write32(struct intf_hdl *pintfhdl, u32 addr, u32 val);
+ int usb_writeN(struct intf_hdl *pintfhdl, u32 addr, u32 length, u8 *pdata);
+ u32 usb_read_port(struct intf_hdl *pintfhdl, u32 addr, u32 cnt, u8 *rmem);
+-void usb_recv_tasklet(void *priv);
++void usb_recv_tasklet(unsigned long priv);
+ 
+ #ifdef CONFIG_USB_INTERRUPT_IN_PIPE
+ void usb_read_interrupt_complete(struct urb *purb, struct pt_regs *regs);
+diff --git a/include/xmit_osdep.h b/include/xmit_osdep.h
+index 70070a8..b0ace1f 100644
+--- a/include/xmit_osdep.h
++++ b/include/xmit_osdep.h
+@@ -53,7 +53,7 @@ extern NDIS_STATUS rtw_xmit_entry(
+ 
+ #ifdef PLATFORM_FREEBSD
+ #define NR_XMITFRAME	256
+-extern int rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev);
++extern netdev_tx_t rtw_xmit_entry(struct sk_buff *pkt, struct net_device *pnetdev);
+ extern void rtw_xmit_entry_wrap(struct ifnet *pifp);
+ #endif /* PLATFORM_FREEBSD */
+ 
+@@ -67,8 +67,8 @@ struct sta_xmit_priv;
+ struct xmit_frame;
+ struct xmit_buf;
+ 
+-extern int _rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev);
+-extern int rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev);
++extern netdev_tx_t _rtw_xmit_entry(struct sk_buff *pkt, struct net_device *pnetdev);
++extern netdev_tx_t rtw_xmit_entry(struct sk_buff *pkt, struct net_device *pnetdev);
+ 
+ #endif /* PLATFORM_LINUX */
+ 
+diff --git a/os_dep/linux/os_intfs.c b/os_dep/linux/os_intfs.c
+index abc2eb2..d4e1463 100644
+--- a/os_dep/linux/os_intfs.c
++++ b/os_dep/linux/os_intfs.c
+@@ -24,6 +24,7 @@
+ #endif
+ 
+ MODULE_LICENSE("GPL");
++MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+ MODULE_DESCRIPTION("Realtek Wireless Lan Driver");
+ MODULE_AUTHOR("Realtek Semiconductor Corp.");
+ MODULE_VERSION(DRIVERVERSION);
+diff --git a/os_dep/linux/usb_ops_linux.c b/os_dep/linux/usb_ops_linux.c
+index 20af2be..2061eb9 100644
+--- a/os_dep/linux/usb_ops_linux.c
++++ b/os_dep/linux/usb_ops_linux.c
+@@ -726,7 +726,7 @@ void usb_init_recvbuf(_adapter *padapter, struct recv_buf *precvbuf)
+ int recvbuf2recvframe(PADAPTER padapter, void *ptr);
+ 
+ #ifdef CONFIG_USE_USB_BUFFER_ALLOC_RX
+-void usb_recv_tasklet(void *priv)
++void usb_recv_tasklet(unsigned long priv)
+ {
+ 	struct recv_buf *precvbuf = NULL;
+ 	_adapter	*padapter = (_adapter *)priv;
+@@ -864,7 +864,7 @@ u32 usb_read_port(struct intf_hdl *pintfhdl, u32 addr, u32 cnt, u8 *rmem)
+ }
+ #else	/* CONFIG_USE_USB_BUFFER_ALLOC_RX */
+ 
+-void usb_recv_tasklet(void *priv)
++void usb_recv_tasklet(unsigned long priv)
+ {
+ 	_pkt			*pskb;
+ 	_adapter		*padapter = (_adapter *)priv;
+diff --git a/os_dep/linux/xmit_linux.c b/os_dep/linux/xmit_linux.c
+index 6ddb0fe..6435326 100644
+--- a/os_dep/linux/xmit_linux.c
++++ b/os_dep/linux/xmit_linux.c
+@@ -440,7 +440,7 @@ int rtw_mlcst2unicst(_adapter *padapter, struct sk_buff *skb)
+ #endif /* CONFIG_TX_MCAST2UNI */
+ 
+ 
+-int _rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev)
++netdev_tx_t _rtw_xmit_entry(struct sk_buff *pkt, struct net_device *pnetdev)
+ {
+ 	_adapter *padapter = (_adapter *)rtw_netdev_priv(pnetdev);
+ 	struct xmit_priv *pxmitpriv = &padapter->xmitpriv;
+@@ -513,11 +513,11 @@ exit:
+ 	return 0;
+ }
+ 
+-int rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev)
++netdev_tx_t rtw_xmit_entry(struct sk_buff *pkt, struct net_device *pnetdev)
+ {
+ 	_adapter *padapter = (_adapter *)rtw_netdev_priv(pnetdev);
+ 	struct	mlme_priv	*pmlmepriv = &(padapter->mlmepriv);
+-	int ret = 0;
++	netdev_tx_t ret = NETDEV_TX_OK;
+ 
+ 	if (pkt) {
+ 		if (check_fwstate(pmlmepriv, WIFI_MONITOR_STATE) == _TRUE) {

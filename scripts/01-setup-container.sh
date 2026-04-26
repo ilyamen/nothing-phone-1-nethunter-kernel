@@ -2,6 +2,7 @@
 # Setup Docker container for the kernel build.
 # Run this on your host (Linux/Mac/Windows-with-Docker).
 set -e
+export MSYS_NO_PATHCONV=1   # Git Bash on Windows: stop /work being rewritten to C:/Program Files/Git/work
 
 CONTAINER=spacewar-build
 VOLUME=spacewar-vol
@@ -23,8 +24,8 @@ docker exec $CONTAINER bash -c "
     gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi
 "
 
-# Neutron Clang's bundled ld.lld needs libxml2.so.2 (Kali has .so.16 only).
-# Symlink — they're ABI compatible enough for our use.
+# AOSP Clang's bundled ld.lld is linked against libxml2.so.2 (Kali has .so.16 only).
+# Symlink — they're ABI-compatible enough for ld.lld's use.
 docker exec $CONTAINER bash -c \
   "ln -sf /usr/lib/x86_64-linux-gnu/libxml2.so.16 /usr/lib/x86_64-linux-gnu/libxml2.so.2"
 

@@ -115,3 +115,50 @@ The working `cr4sh@parrot` kernel works because it has `CONFIG_CFI_CLANG` not se
 - **Always pass `ARCH=` explicitly.** Even seemingly-innocuous `make olddefconfig` will silently corrupt your config.
 - **Make backups of vbmeta and misc, not just boot.** And don't blindly use `--disable-verity` — it modifies vbmeta in ways that can cascade into recovery loops.
 - **Pstore is too small for noisy devices.** This Nothing Phone 1 has a chatty haptics driver that fills the 213 KB ramoops buffer in seconds. To debug late-boot panics you may need to either disable the haptics module or increase `CONFIG_PSTORE_RAM_SIZE`.
+
+## Migration: XOS-14.0.2 → lineage nethunter-23.0 (2026-04)
+
+The original v1 build used `kimocoder/kernel_nothing_sm7325` branch `XOS-14.0.2` (Linux 5.4.281, XOS ROM lineage) with Neutron Clang 19 and the monolithic `vendor/lahaina-qgki_defconfig`. Replaced with `kimocoder/android_kernel_lineage_nothing_sm7325` branch `nethunter-23.0` (Linux 5.4.300, LineageOS upstream + ASB security patches) for these reasons:
+
+1. **Source maintenance** — XOS-14.0.2 hadn't been updated since 2024-08; lineage nethunter-23.0 actively pulls LineageOS upstream merges (e.g. `ASB-2025-10-06_11-5.4` → Linux 5.4.300) and has an explicit commit `qcacld: enable direct monitor mode through 'iw'`.
+2. **Defconfig** — switched to kimocoder's purpose-built `arch/arm64/configs/spacewar_defconfig`. It already has `CONFIG_HID=y`, `CONFIG_USB_F_HID=y`, `CONFIG_USB_F_MASS_STORAGE=y`, `CONFIG_EXFAT_FS=y` enabled — no `extras.config` fragment needed any more.
+3. **Toolchain** — switched from Neutron Clang 19 to **AOSP Clang `r536225`** (Clang 18.0.4) to match kimocoder's official `build.sh` recipe exactly (`LLVM=1 LLVM_IAS=1 CC=clang CLANG_TRIPLE=clang CROSS_COMPILE=aarch64-linux-gnu-`). Downloaded from `SA9990/Toolchain` GitHub mirror with fallback to AOSP googlesource.
+4. **AnyKernel3** — switched from the official Kali 2.5 GB zip download to `kimocoder/AnyKernel3` branch `spacewar` (small, purpose-built for this device, supports Android 11–16).
+5. **Removed** `-d ARCH_LAHAINA -d ARCH_SHIMA` from configure step — that disable was wrong (lahaina IS the SoC family) and `spacewar_defconfig` correctly enables both. The previous build apparently worked because Kconfig dependencies forced them back on regardless.
+
+Patches that survived the migration unchanged: `hh_msgq.h`, `msm_cvp_ioctl.c`, all three Realtek `.ko` Makefile fixes. Same upstream bugs are still present in the lineage source.
+
+Devicetree compat: `spacewar_defconfig` keeps `CONFIG_LOCALVERSION="-qgki"`; we override to empty so the kernel string is clean `5.4.300-NetHunter`. The lineage kernel base is `android13-5.4-lahaina` (kernel base, not userland) — boots on AOSPA Topaz / Tiramisu / Uvite, LineageOS 20+, and other Android 13+ ROMs unchanged. Vendor blob ABI is consistent within the 5.4 vendor kernel family.
+
+## Gap analysis vs official Kali NetHunter (and our fixes)
+
+While reviewing what `kali-nethunter-kernel-builder` does at build time we found that two classes of NetHunter functionality are **not pre-baked** into kimocoder's source — they're applied during the Kali build pipeline. We replicate that here so we don't lose feature parity.
+
+### 1. QCACLD-3.0 packet injection patch series (17 patches)
+
+Lives in `kali-nethunter-kernel-builder/patches/5.4/add-qcacld-3.0-injection-5.4.patch` (13 861 lines, signed `kimocoder@aircrack-ng.org`, dated 2025-10-31 → 2025-11-09). It:
+
+- Adds `case QDF_MONITOR_MODE` to `hdd_is_client_mode`/`hdd_is_ap_mode` (patch 01/17)
+- Adds whole new files: `wlan_hdd_frame_inject.{c,h}`, `wlan_hdd_frame_validate.{c,h}`, `wlan_hdd_inject_security.{c,h}`, `wlan_hdd_frame_inject_*.{c,h}` (debug, security_test, integration, comprehensive_test), `wma_frame_inject.c`
+- Wires `CONFIG_FEATURE_FRAME_INJECTION_SUPPORT := y` into `drivers/staging/qcacld-3.0/configs/default_defconfig` and the matching Kbuild rules
+- Adds VDEV_START switching, channel width refactor, packet inject vendor command alignment
+
+Of the 17 patches **only patch 02/17** (`qcacld: enable direct monitor mode through 'iw'`) is cherry-picked into `kimocoder/android_kernel_lineage_nothing_sm7325 nethunter-23.0`. The remaining 16 must be applied at build time — without them internal Wi-Fi (`wlan0`) can RX in monitor mode but cannot TX-inject packets.
+
+`scripts/02-clone-sources.sh` clones the kali-nethunter-kernel-builder repo, and `scripts/03-apply-patches.sh` applies the series via `git am --3way` (with `--skip` loop for the already-applied patch 02). External Realtek `.ko` modules already do their own injection — this gap only affects users who want to attack via the internal Qualcomm radio without an external adapter.
+
+### 2. Defconfig flags missing from `spacewar_defconfig`
+
+`spacewar_defconfig` is comprehensive but doesn't enable a few things Kali's `devices.yml` claims for spacewar (`NFS`, etc.) or that pentest tooling expects. We force them on via `scripts/config -e ...` in `04-configure.sh`:
+
+| Flag | Why |
+|---|---|
+| `CONFIG_NFS_FS`, `CONFIG_NFS_V3`, `CONFIG_NFS_V4`, `CONFIG_NFSD`, `CONFIG_NFSD_V3`, `CONFIG_NFSD_V4` | NFS client + server. `devices.yml` lists `NFS` as a spacewar feature. |
+| `CONFIG_USBIP_CORE`, `CONFIG_USBIP_VHCI_HCD` | USB-over-IP forwarding — useful for sharing host-side USB devices with the phone over network (advanced pentest scenarios). |
+| `CONFIG_PACKET_DIAG` | AF_PACKET socket introspection — used by `ss`, `bettercap` and similar tools that enumerate raw sockets. |
+
+### 3. What we **don't** add (and why)
+
+- `CONFIG_RTL8XXXU` / in-tree RTL88XXAU — Kali's `devices.yml` lists `RTL88XXAU` as a feature. We skip it because our 3 out-of-tree `.ko` modules (`rtl8188eus`, `88x2bu`, `8821cu`) cover **more chipsets** with monitor + injection. Adding the in-tree driver would just create symbol conflicts.
+- `CONFIG_BT_HCIUART_QCA` — internal Bluetooth on this device goes via Qualcomm's vendor BT path, not the generic `hci_uart_qca`. Enabling it doesn't add functionality.
+- `CONFIG_MAC80211_HWSIM` — Wi-Fi simulator, debug-only, not a NetHunter feature.

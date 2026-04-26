@@ -35,7 +35,7 @@ AnyKernel3 (under the hood of FKM's flasher) preserves your existing ramdisk inc
 
 ```bash
 adb shell uname -r
-# Expected: 5.4.281-NetHunter
+# Expected: 5.4.300-NetHunter
 
 adb shell 'su -c "lsmod"'
 # Empty initially. Modules load on demand when adapter is plugged.
@@ -97,4 +97,4 @@ adb shell 'su -c "
 ### Mercusys MU-6H
 First time only — needs USB mode switch (see [MERCUSYS-USB-MODESWITCH.md](MERCUSYS-USB-MODESWITCH.md)). Then load module like the others.
 
-For permanent persistence, install modules to `/vendor/lib/modules/5.4.281-NetHunter/` via a Magisk module overlay. The included `wirelessFirmware`-like layout in our AnyKernel3 zip already does this.
+For permanent persistence, install modules to `/vendor/lib/modules/5.4.300-NetHunter/` via a Magisk module overlay. The included `wirelessFirmware`-like layout in our AnyKernel3 zip already does this.

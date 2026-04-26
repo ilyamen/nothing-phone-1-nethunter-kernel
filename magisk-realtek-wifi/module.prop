@@ -1,0 +1,6 @@
+id=realtek-wifi-cfi-fix
+name=Realtek USB WiFi (CFI fix)
+version=v1.0
+versionCode=1
+author=spacewar-nethunter
+description=External Realtek USB WiFi drivers (RTL8188EUS/RTL8812BU/RTL8821CU) with CFI signature fix (PR #1041) for Nothing Phone 1 NetHunter kernel. Auto-loads on boot.

@@ -26,8 +26,9 @@ docker exec spacewar-build bash -c "
     gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi
 "
 
-# Workaround: Neutron Clang's bundled ld.lld needs libxml2.so.2;
-# Kali only ships libxml2.so.16 (ABI-compatible).
+# Workaround: AOSP Clang's bundled ld.lld is linked against libxml2.so.2;
+# Kali only ships libxml2.so.16 (ABI-compatible). Symlink to avoid "ld.lld: error
+# while loading shared libraries: libxml2.so.2".
 docker exec spacewar-build bash -c \
   "ln -sf /usr/lib/x86_64-linux-gnu/libxml2.so.16 /usr/lib/x86_64-linux-gnu/libxml2.so.2"
 ```
@@ -40,16 +41,29 @@ Then copy the scripts and configs into the container and run them — see [scrip
 - 3 out-of-tree `.ko` modules: `8188eu.ko`, `88x2bu.ko`, `8821cu.ko`.
 - An AnyKernel3 zip ready to flash via Franco Kernel Manager.
 
+## Source
+
+- Repo: [`kimocoder/android_kernel_lineage_nothing_sm7325`](https://github.com/kimocoder/android_kernel_lineage_nothing_sm7325)
+- Branch: `nethunter-23.0` (internal base: `android13-5.4-lahaina`)
+- Linux: 5.4.300 + LineageOS upstream + ASB-2025-10 patch sets
+- Defconfig: `arch/arm64/configs/spacewar_defconfig` (kimocoder's device-specific defconfig — NetHunter prerequisites pre-enabled)
+
 ## Critical config flags (do NOT change)
 
 | Config | Value | Why |
 |---|---|---|
-| `CFI_CLANG` | `n` | Out-of-tree Realtek drivers crash the kernel on `iw set type monitor` when CFI is on. |
+| `CFI_CLANG` | `n` | Out-of-tree Realtek drivers crash the kernel on `iw set type monitor` when CFI is on. Defconfig ships with `=y`, we override. |
 | `LTO` | `n` (LTO_NONE) | Forced off because CFI off → Kconfig dependency. Loses some optimization but runs fine. |
-| `WLAN_VENDOR_REALTEK` | `n` | Avoid conflicts with our out-of-tree Realtek drivers. (We rely on QCACLD for internal Wi-Fi.) |
-| `ATH9K_HTC` | `n` | Symbol conflict with QCACLD HTC layer. |
-| `EXFAT_FS` | `y` | Parity with official Kali NetHunter kernel. |
-| `LOCALVERSION` | `""` (empty) | Avoid the build host's Kali codename suffix (e.g. `-astatine-honeydew`) leaking into the kernel string. |
+| `ATH9K_HTC` | `n` | Defensive: symbol conflict with QCACLD HTC layer. |
+| `LOCALVERSION` | `""` (empty) | Defconfig has `"-qgki"`; we clear it so the kernel string is clean `5.4.300-NetHunter` from the env var. |
+
+Already correct in `spacewar_defconfig`, no override needed:
+
+| Config | Value |
+|---|---|
+| `WLAN_VENDOR_REALTEK` | `n` |
+| `EXFAT_FS` | `y` |
+| `HID`, `USB_F_HID`, `USB_F_MASS_STORAGE` | `y` |
 
 ## Source patches required
 
@@ -63,6 +77,13 @@ These are applied automatically by `scripts/apply-patches.sh`:
 
 ## Toolchain
 
-[Neutron Clang 19](https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/tag/10032024) is downloaded from the upstream release. ~570 MB tar.zst.
+**AOSP Clang `r536225`** (Clang 18.0.4, Google's kernel-tuned prebuilt) — same toolchain kimocoder uses in his official [`build.sh`](https://raw.githubusercontent.com/kimocoder/kernel_nothing_sm7325/nethunter-15.0/build.sh):
 
-We initially tried Debian's `clang-21` from apt — it builds successfully but produces a kernel that **hangs at the Nothing logo every boot**. Neutron's kernel-tuned LLVM produces a working kernel.
+```bash
+MAKE_PARAMS="O=out ARCH=arm64 CC=clang CLANG_TRIPLE=clang LLVM=1 LLVM_IAS=1 \
+    CROSS_COMPILE=aarch64-linux-gnu-"
+```
+
+Downloaded from `SA9990/Toolchain` GitHub mirror (avoids AOSP googlesource throttling) with fallback to AOSP `prebuilts/clang/host/linux-x86 +archive/refs/heads/main-kernel/clang-r536225.tar.gz`. ~280 MB tar.gz.
+
+Earlier iterations of this build tried Debian's `clang-21` (kernel hangs at Nothing logo) and Neutron Clang 19 (works, but not the canonical Android-team toolchain). Switched to AOSP Clang r536225 to match kimocoder's recipe exactly — proven to boot.

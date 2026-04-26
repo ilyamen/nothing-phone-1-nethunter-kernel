@@ -1,3 +1,24 @@
 output/
 *.log
 .DS_Store
+
+# Phone partition backups — device-unique data (modemst, persist contain IMEI/calibration)
+local-backup-*/
+backup_*/
+*.img
+
+# LineageOS / Nothing OS firmware downloads
+lineage-*-spacewar/
+*.zip
+
+# Extracted vendor proprietary modules (reference only, not needed for build)
+dlkm_orig/
+
+# Claude Code session state
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+
+# Random root-level junk
+wiki.html
+Image-*
+magiskboot

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the kernel Image using AOSP Clang r536225 (matches kimocoder/build.sh exactly).
+# Build the kernel Image using AOSP Clang r547379 (matches kimocoder/build.sh exactly).
 set -e
 export MSYS_NO_PATHCONV=1   # Git Bash on Windows: stop /work being rewritten to C:/Program Files/Git/work
 
@@ -10,7 +10,7 @@ set -e
 export MSYS_NO_PATHCONV=1   # Git Bash on Windows: stop /work being rewritten to C:/Program Files/Git/work
 cd /work/kernel-los
 
-export PATH=/work/aosp-clang/clang-r536225/bin:$PATH
+export PATH=/work/aosp-clang/clang-r547379/bin:$PATH
 export ARCH=arm64 SUBARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang
 export CLANG_TRIPLE=clang
 export CROSS_COMPILE=aarch64-linux-gnu-
@@ -21,7 +21,7 @@ unset LOCALVERSION   # CONFIG_LOCALVERSION="-qgki" is set in running config; LOC
 touch Makefile
 
 J=$(nproc)
-echo "[*] Building with AOSP Clang r536225 on $J threads…"
+echo "[*] Building with AOSP Clang r547379 on $J threads…"
 clang --version | head -1
 time make O=out -j$J Image dtbs modules
 echo

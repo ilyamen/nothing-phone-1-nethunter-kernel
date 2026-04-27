@@ -42,7 +42,7 @@ export ARCH=arm64 SUBARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang \
        CLANG_TRIPLE=clang \
        CROSS_COMPILE=aarch64-linux-gnu- \
        CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-       PATH=/work/aosp-clang/clang-r536225/bin:\$PATH
+       PATH=/work/aosp-clang/clang-r547379/bin:\$PATH
 unset LOCALVERSION   # Don't stack with CONFIG_LOCALVERSION (which is "-qgki")
 
 mkdir -p out

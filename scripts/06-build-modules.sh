@@ -22,7 +22,7 @@ for d in /work/rtl8188eus /work/88x2bu-20210702 /work/8821cu-20210916; do
   cd $d
   make clean >/dev/null 2>&1 || true
   rm -f *.ko
-  PATH=/work/aosp-clang/clang-r536225/bin:$PATH eval make $ENV \
+  PATH=/work/aosp-clang/clang-r547379/bin:$PATH eval make $ENV \
        KCFLAGS=-fno-stack-protector -j$J >/dev/null 2>&1
   KO=$(ls *.ko 2>/dev/null)
   if [ -z "$KO" ]; then

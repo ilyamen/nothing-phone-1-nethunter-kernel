@@ -70,6 +70,52 @@ else
   ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
 fi
 
+# NetHunter feature flags — full kali-nethunter-15.0 set adapted for our 23.2 base.
+# OPT-IN via NH_FEATURES=1. Default OFF because the previous attempt to enable
+# the full set in one go broke LineageOS 23.2 vendor modules (sensors/icons
+# disappeared on first boot) — the USB_CONFIGFS_* / USB_F_RNDIS=y changes are
+# suspected. Add features in small batches and test after each.
+if [ "\${NH_FEATURES:-0}" = "1" ]; then
+echo "[*] NH_FEATURES=1 — enabling full NetHunter feature flags (RISKY)"
+./scripts/config --file out/.config \
+  \`# === USBIP — USB-over-IP (USBIP attacks) === \` \
+  -m USBIP_CORE -m USBIP_VHCI_HCD -m USBIP_HOST -m USBIP_VUDC \
+  --set-val USBIP_VHCI_HC_PORTS 8 --set-val USBIP_VHCI_NR_HCS 1 \
+  \`# === USB gadget functions (BadUSB / fake-anything) === \` \
+  -m USB_F_RNDIS -m USB_F_ECM -m USB_F_EEM -m USB_F_OBEX \
+  -m USB_F_PRINTER -m USB_F_SUBSET -m USB_F_SS_LB \
+  -m USB_F_UAC1 -m USB_F_UAC2 -m USB_F_UVC \
+  -e USB_CONFIGFS_RNDIS -e USB_CONFIGFS_ECM -e USB_CONFIGFS_ECM_SUBSET \
+  -e USB_CONFIGFS_EEM -e USB_CONFIGFS_OBEX -e USB_CONFIGFS_F_PRINTER \
+  -e USB_CONFIGFS_F_LB_SS -e USB_CONFIGFS_F_UAC1 -e USB_CONFIGFS_F_UAC1_LEGACY \
+  -e USB_CONFIGFS_F_UVC \
+  \`# === HID / force feedback === \` \
+  -e HID_PID \
+  \`# === 802.11 stack — virtual radio, mesh, wireless extensions === \` \
+  -m MAC80211_HWSIM -e MAC80211_LEDS -e MAC80211_MESH \
+  -e CFG80211_WEXT -e CFG80211_CRDA_SUPPORT \
+  -m LIB80211 -m LIB80211_CRYPT_WEP -m LIB80211_CRYPT_CCMP -m LIB80211_CRYPT_TKIP \
+  \`# === USB Wi-Fi adapters (random USB dongles) === \` \
+  -m MT76_USB -m MT76x0U -m MT76x2U -m MT7601U \
+  -m RT2X00 -m RT2X00_LIB_USB -m RT2800USB \
+  -e RT2800USB_RT33XX -e RT2800USB_RT3573 -e RT2800USB_RT35XX \
+  -e RT2800USB_RT53XX -e RT2800USB_RT55XX -e RT2800USB_UNKNOWN \
+  -m RTL8187 -e RTL8187_LEDS -m RTL8192CU -m RTL8XXXU -e RTL8XXXU_UNTESTED \
+  -m RTLWIFI_USB -m ATH9K -m ATH9K_HTC -m ATH10K_USB \
+  -m PRISM2_USB -m RSI_USB -m LIBERTAS_USB -m BRCMFMAC \
+  \`# === Bluetooth USB === \` \
+  -m BT_HCIBTUSB -e BT_HCIBTUSB_AUTOSUSPEND \
+  -e BT_HCIBTUSB_BCM -e BT_HCIBTUSB_MTK -e BT_HCIBTUSB_RTL \
+  -e BT_BCM -e BT_RTL -e BT_MTKSDIO \
+  -m BT_HCIVHCI -m BT_HCIBPA10X -m BT_HCIBFUSB -m BT_HCIBCM203X \
+  \`# === NFS server/client (for sharing during pentest) === \` \
+  -m NFS_FS -m NFS_V3 -m NFS_V4 -m NFSD -e NFSD_V3 -e NFSD_V4 \
+  \`# === Misc useful for tools === \` \
+  -m PACKET_DIAG -m UNIX_DIAG -m INET_DIAG \
+  -e NETFILTER_XT_MATCH_MULTIPORT
+ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
+fi  # end NH_FEATURES
+
 # DEBUG-KERNEL knobs (set DEBUG_KERNEL=1 env to enable). MINIMAL set —
 # only what's needed to make ramoops save panic stacktraces.
 # Lessons from a previous attempt: KALLSYMS_ALL + DEBUG_KERNEL + DEBUG_BUGVERBOSE

@@ -65,6 +65,32 @@ index 1f9457f..d7409a1 100644
  ccflags-y += -DCONFIG_LITTLE_ENDIAN
  ccflags-y += -DCONFIG_CONCURRENT_MODE
  ccflags-y += -DCONFIG_IOCTL_CFG80211
+diff --git a/hal/rtl8822b/usb/rtl8822bu_xmit.c b/hal/rtl8822b/usb/rtl8822bu_xmit.c
+index 711bdbd..f100cfe 100644
+--- a/hal/rtl8822b/usb/rtl8822bu_xmit.c
++++ b/hal/rtl8822b/usb/rtl8822bu_xmit.c
+@@ -847,10 +847,10 @@ static s32 rtl8822bu_xmitframe_complete(PADAPTER padapter, struct xmit_priv *pxm
+ }
+ #endif
+ 
+-static void rtl8822bu_xmit_tasklet(void *priv)
++static void rtl8822bu_xmit_tasklet(unsigned long priv)
+ {
+ 	int ret = _FALSE;
+-	_adapter *padapter = (_adapter *)priv;
++	_adapter *padapter = (_adapter *)(uintptr_t)priv;
+ 	struct xmit_priv *pxmitpriv = &padapter->xmitpriv;
+ 
+ 	while (1) {
+@@ -879,7 +879,7 @@ s32	rtl8822bu_init_xmit_priv(PADAPTER padapter)
+ #ifdef PLATFORM_LINUX
+ 	tasklet_init(&pxmitpriv->xmit_tasklet,
+ #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0) && !defined(RHEL92))
+-		     (void(*)(unsigned long))rtl8822bu_xmit_tasklet,
++		     rtl8822bu_xmit_tasklet,
+ #else
+ 		     (void *)rtl8822bu_xmit_tasklet,
+ #endif
 diff --git a/include/usb_ops_linux.h b/include/usb_ops_linux.h
 index bf59ca0..dd4665e 100644
 --- a/include/usb_ops_linux.h
@@ -102,6 +128,43 @@ index 9bf9c93..25ecc2f 100644
  
  #endif /* PLATFORM_LINUX */
  
+diff --git a/os_dep/linux/ioctl_cfg80211.c b/os_dep/linux/ioctl_cfg80211.c
+index 2ab2834..fb521dc 100644
+--- a/os_dep/linux/ioctl_cfg80211.c
++++ b/os_dep/linux/ioctl_cfg80211.c
+@@ -4836,9 +4836,9 @@ static int rtw_cfg80211_monitor_if_close(struct net_device *ndev)
+ 	return ret;
+ }
+ 
+-static int rtw_cfg80211_monitor_if_xmit_entry(struct sk_buff *skb, struct net_device *ndev)
++static netdev_tx_t rtw_cfg80211_monitor_if_xmit_entry(struct sk_buff *skb, struct net_device *ndev)
+ {
+-	int ret = 0;
++	netdev_tx_t ret = NETDEV_TX_OK;
+ 	int rtap_len;
+ 	int qos_len = 0;
+ 	int dot11_hdr_len = 24;
+diff --git a/os_dep/linux/mlme_linux.c b/os_dep/linux/mlme_linux.c
+index 6fd24e8..f2d1f40 100644
+--- a/os_dep/linux/mlme_linux.c
++++ b/os_dep/linux/mlme_linux.c
+@@ -290,14 +290,14 @@ void rtw_indicate_sta_disassoc_event(_adapter *padapter, struct sta_info *psta)
+ 
+ #ifdef CONFIG_HOSTAPD_MLME
+ 
+-static int mgnt_xmit_entry(struct sk_buff *skb, struct net_device *pnetdev)
++static netdev_tx_t mgnt_xmit_entry(struct sk_buff *skb, struct net_device *pnetdev)
+ {
+ 	struct hostapd_priv *phostapdpriv = rtw_netdev_priv(pnetdev);
+ 	_adapter *padapter = (_adapter *)phostapdpriv->padapter;
+ 
+ 	/* RTW_INFO("%s\n", __FUNCTION__); */
+ 
+-	return rtw_hal_hostap_mgnt_xmit_entry(padapter, skb);
++	return (netdev_tx_t)rtw_hal_hostap_mgnt_xmit_entry(padapter, skb);
+ }
+ 
+ static int mgnt_netdev_open(struct net_device *pnetdev)
 diff --git a/os_dep/linux/os_intfs.c b/os_dep/linux/os_intfs.c
 index 06d0f04..49267aa 100644
 --- a/os_dep/linux/os_intfs.c

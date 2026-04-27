@@ -70,8 +70,24 @@ else
   ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
 fi
 
+# DEBUG-KERNEL knobs (set DEBUG_KERNEL=1 env to enable). MINIMAL set —
+# only what's needed to make ramoops save panic stacktraces.
+# Lessons from a previous attempt: KALLSYMS_ALL + DEBUG_KERNEL + DEBUG_BUGVERBOSE
+# caused LineageOS 23.2 vendor modules (sensors, audio, network indicators)
+# to fail to load. Keep config minimal. ramoops.record_size override comes
+# via kernel CMDLINE since this device's DT does not declare it.
+if [ "\${DEBUG_KERNEL:-0}" = "1" ]; then
+  echo "[*] DEBUG_KERNEL=1 — enabling minimal debug knobs"
+  ./scripts/config --file out/.config \
+    -e PRINTK_TIME \
+    -e CMDLINE_EXTEND
+  ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
+  # Set CMDLINE separately to avoid heredoc whitespace issues
+  ./scripts/config --file out/.config --set-str CMDLINE \
+    "cgroup_disable=pressure ramoops.record_size=1048576 ramoops.ftrace_size=524288 panic_print=15"
+fi
+
 # Force git tree dirty — needed to reproduce '-dirty' suffix in vermagic
-# (running kernel is '5.4.302-qgki-g192e5b024436-dirty')
 touch Makefile
 
 echo

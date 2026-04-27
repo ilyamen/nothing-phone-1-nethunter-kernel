@@ -11,7 +11,7 @@ set -e
 export MSYS_NO_PATHCONV=1   # Git Bash on Windows: stop /work being rewritten to C:/Program Files/Git/work
 
 AK=/work/ak3-spacewar
-DTS_DIR=/work/kernel/out/arch/arm64/boot/dts/vendor/qcom
+DTS_DIR=/work/kernel-los/out/arch/arm64/boot/dts/vendor/qcom
 
 # Sanity check
 if [ ! -d "$AK" ] || [ ! -f "$AK/anykernel.sh" ]; then
@@ -27,40 +27,40 @@ rm -f  $AK/Image $AK/dtb $AK/dtbo.img
 rm -rf $AK/modules/vendor/lib/modules/*
 
 # Image
-cp /work/kernel/out/arch/arm64/boot/Image $AK/Image
+cp /work/kernel-los/out/arch/arm64/boot/Image $AK/Image
 
 # Concatenate all DTBs into one + build dtbo from .dtbo overlays (kimocoder pattern)
 cat $DTS_DIR/*.dtb > $AK/dtb
-python3 /work/kernel/scripts/mkdtboimg.py create $AK/dtbo.img --page_size=4096 $DTS_DIR/*.dtbo
+python3 /work/kernel-los/scripts/mkdtboimg.py create $AK/dtbo.img --page_size=4096 $DTS_DIR/*.dtbo
 
 # Modules — LineageOS-spacewar style FLAT layout: /vendor/lib/modules/*.ko
 # (LOS' init.target.rc invokes `modprobe -a -d /vendor/lib/modules <names...>` directly,
 #  not via /vendor/lib/modules/<KVER>/.) All in-kernel-tree .ko's go here so vermagic
 #  matches the running kernel exactly and modprobe loads everything.
-KVER=$(cat /work/kernel/out/include/config/kernel.release)
+KVER=$(cat /work/kernel-los/out/include/config/kernel.release)
 FLAT=$AK/modules/vendor/lib/modules
 mkdir -p $FLAT
 
 # Copy ALL freshly-built kernel modules (flat — strip directory hierarchy)
-find /work/kernel/out/modules_install/lib/modules -name '*.ko' -exec cp {} $FLAT/ \; 2>/dev/null || true
+find /work/kernel-los/out/modules_install/lib/modules -name '*.ko' -exec cp {} $FLAT/ \; 2>/dev/null || true
 echo "[+] Copied $(ls $FLAT/*.ko 2>/dev/null | wc -l) kernel modules into flat /vendor/lib/modules/"
 
 # Plus our 3 out-of-tree Realtek drivers (also flat)
-cp /work/modules/8188eu.ko  $FLAT/
-cp /work/modules/88x2bu.ko  $FLAT/
-cp /work/modules/8821cu.ko  $FLAT/
+cp /work/modules-FINAL/8188eu.ko  $FLAT/
+cp /work/modules-FINAL/88x2bu.ko  $FLAT/
+cp /work/modules-FINAL/8821cu.ko  $FLAT/
 
 # Module metadata — depmod over the flat dir
 ( cd $FLAT && \
-  cp /work/kernel/out/modules_install/lib/modules/$KVER/modules.dep . 2>/dev/null || true; \
-  cp /work/kernel/out/modules.builtin .; \
-  cp /work/kernel/out/modules.builtin.modinfo .; \
-  cp /work/kernel/out/modules_install/lib/modules/$KVER/modules.alias . 2>/dev/null || true; \
-  cp /work/kernel/out/modules_install/lib/modules/$KVER/modules.softdep . 2>/dev/null || true; \
+  cp /work/kernel-los/out/modules_install/lib/modules/$KVER/modules.dep . 2>/dev/null || true; \
+  cp /work/kernel-los/out/modules.builtin .; \
+  cp /work/kernel-los/out/modules.builtin.modinfo .; \
+  cp /work/kernel-los/out/modules_install/lib/modules/$KVER/modules.alias . 2>/dev/null || true; \
+  cp /work/kernel-los/out/modules_install/lib/modules/$KVER/modules.softdep . 2>/dev/null || true; \
 )
 
 # Re-run depmod against flat layout to regenerate modules.dep with correct relative paths
-depmod -b $AK/modules/vendor -F /work/kernel/out/System.map -e $KVER 2>/dev/null || \
+depmod -b $AK/modules/vendor -F /work/kernel-los/out/System.map -e $KVER 2>/dev/null || \
 depmod -b $AK/modules/vendor $KVER 2>/dev/null || true
 
 # Move depmod-generated metadata up out of <KVER>/ subdir into flat layout if needed

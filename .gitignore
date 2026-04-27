@@ -1,1 +1,4 @@
 .tmp-*
+local-backup-*/*.img
+local-backup-*/*.img.gz
+partial-live-*/

@@ -12,15 +12,21 @@ set -e
 export MSYS_NO_PATHCONV=1
 
 CONTAINER=spacewar-build
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-# Push our realtek-patches/ into the container — drivers are patched there
-docker cp "$REPO_ROOT/realtek-patches/" $CONTAINER:/work/realtek-patches/
 
 docker exec -i $CONTAINER bash <<'EOF'
 set -e
 export MSYS_NO_PATHCONV=1
+
+# Pull realtek-patches/ from our build-repo on GitHub (pushed state).
+# This avoids docker cp host-path quoting issues on Windows / Git Bash.
+if [ ! -d /work/build-repo ]; then
+  git clone --depth=1 https://github.com/ilyamen/nothing-phone-1-nethunter-kernel /work/build-repo >/dev/null
+else
+  cd /work/build-repo && git pull --ff-only --depth=1 origin master >/dev/null && cd /
+fi
+rm -rf /work/realtek-patches
+cp -r /work/build-repo/realtek-patches /work/realtek-patches
+echo "[+] realtek-patches/ synced from build-repo"
 
 # 0. Focaltech touchscreen firmware blob (FT3680_WXN_M146_V27_D01_20220706_app.i) — 598 KB header
 #    Required by drivers/input/touchscreen/focaltech_touch/focaltech_flash.c at compile time.

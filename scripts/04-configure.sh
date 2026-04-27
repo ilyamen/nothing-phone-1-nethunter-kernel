@@ -19,17 +19,17 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CONTAINER=spacewar-build
 
-# Push running-config.gz into container if present
-if [ -f "$REPO_ROOT/running-config.gz" ]; then
-  docker cp "$REPO_ROOT/running-config.gz" $CONTAINER:/tmp/running-config.gz
-  echo "[+] Using deterministic running-config.gz from repo (matches phone slot_a Stage 4)"
-  USE_DETERMINISTIC=1
-else
-  echo "[!] running-config.gz NOT found in repo root."
+# running-config.gz is stored in the build-repo on GitHub. Pull it from inside
+# the container to avoid Windows-Git-Bash path quoting issues with `docker cp`.
+USE_DETERMINISTIC=1
+if [ ! -f "$REPO_ROOT/running-config.gz" ]; then
+  echo "[!] running-config.gz NOT found in build-repo."
   echo "    Pull it from your phone first:"
   echo "      adb shell \"su -c 'cat /proc/config.gz'\" > running-config.gz"
   echo "    Falling back to defconfig+merge approach (config drift risk)."
   USE_DETERMINISTIC=0
+else
+  echo "[+] Using deterministic running-config.gz from build-repo (fetched via curl inside container)"
 fi
 
 docker exec -i $CONTAINER bash <<EOF
@@ -48,7 +48,9 @@ unset LOCALVERSION   # Don't stack with CONFIG_LOCALVERSION (which is "-qgki")
 mkdir -p out
 
 if [ "$USE_DETERMINISTIC" = "1" ]; then
-  # Path A — deterministic
+  # Path A — deterministic. Fetch running-config.gz from our build-repo on GitHub.
+  curl -sSLf "https://raw.githubusercontent.com/ilyamen/nothing-phone-1-nethunter-kernel/master/running-config.gz" \
+    -o /tmp/running-config.gz
   gunzip -c /tmp/running-config.gz > out/.config
   ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
 else

@@ -1,0 +1,7 @@
+id=nh-wifi-adb
+name=NetHunter WiFi ADB Auto-Start
+version=v1.0
+versionCode=1
+author=ilyamen
+description=Auto-starts adbd on TCP port 44444 every boot. Connect: `adb connect <phone-ip>:44444`. Disable this module to stop the auto-start. Survives reboots.
+updateJson=

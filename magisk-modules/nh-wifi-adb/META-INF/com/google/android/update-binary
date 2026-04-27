@@ -1,0 +1,17 @@
+#!/sbin/sh
+#################
+# Magisk module template — installer that just unzips into module dir.
+# Standard Magisk installer is invoked by the Magisk Manager UI; this is the
+# minimal entry point.
+#################
+umask 022
+
+OUTFD=$2
+ZIPFILE=$3
+
+mount /data 2>/dev/null
+
+# Magisk provides an installer helper at this path on devices with Magisk installed
+. /data/adb/magisk/util_functions.sh
+install_module
+exit 0

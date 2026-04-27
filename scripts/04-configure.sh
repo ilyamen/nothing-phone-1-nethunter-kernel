@@ -70,49 +70,56 @@ else
   ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
 fi
 
-# NetHunter feature flags — full kali-nethunter-15.0 set adapted for our 23.2 base.
-# OPT-IN via NH_FEATURES=1. Default OFF because the previous attempt to enable
-# the full set in one go broke LineageOS 23.2 vendor modules (sensors/icons
-# disappeared on first boot) — the USB_CONFIGFS_* / USB_F_RNDIS=y changes are
-# suspected. Add features in small batches and test after each.
-if [ "\${NH_FEATURES:-0}" = "1" ]; then
-echo "[*] NH_FEATURES=1 — enabling full NetHunter feature flags (RISKY)"
+# NetHunter feature flags — incremental safe set verified on LOS 23.2.
+# Always applied (default ON). To skip, set NH_FEATURES=0.
+#
+# Verified safe (Batches 1-4 sensors+icons+wlan all OK):
+#  • USBIP_*           — USB-over-IP attacks
+#  • BT_HCIBTUSB+vars  — Bluetooth USB dongles
+#  • USB Wi-Fi family  — MT76, RT2X00, ATH9K/10K, PRISM2, RSI (modules)
+#  • MAC80211_HWSIM    — virtual radio for evil-twin / hostapd-mana
+#  • HID_PID           — force-feedback HID
+#  • NFS_FS / NFSD     — NFS client+server (modules, not auto-loaded)
+#  • PACKET/UNIX/INET_DIAG, NETFILTER_XT_MATCH_MULTIPORT
+#
+# DELIBERATELY EXCLUDED (verified breaks LOS 23.2 vendor ABI on first boot):
+#  • CFG80211_WEXT     — adds fields to struct wiphy → vendor wlan/icnss2 fail
+#  • MAC80211_MESH     — adds fields to struct ieee80211_sub_if_data → ABI break
+#  • USB_F_RNDIS/ECM/EEM/UVC/PRINTER + USB_CONFIGFS_*  — Catch-22: USB_F_*
+#    cannot be enabled standalone (no Kconfig prompt — only `select`-able by
+#    USB_CONFIGFS_*=y), but enabling USB_CONFIGFS_*=y triggers vendor
+#    init.<dev>.usb.rc paths that fail on this device.
+#
+# NH_FEATURES=0 disables this whole block (returns to plain running-config).
+if [ "\${NH_FEATURES:-1}" = "1" ]; then
+echo "[*] NH_FEATURES=1 — enabling verified NetHunter feature flags"
 ./scripts/config --file out/.config \
-  \`# === USBIP — USB-over-IP (USBIP attacks) === \` \
+  \`# === USBIP — USB-over-IP (Batch 1) === \` \
   -m USBIP_CORE -m USBIP_VHCI_HCD -m USBIP_HOST -m USBIP_VUDC \
   --set-val USBIP_VHCI_HC_PORTS 8 --set-val USBIP_VHCI_NR_HCS 1 \
-  \`# === USB gadget functions (BadUSB / fake-anything) === \` \
-  -m USB_F_RNDIS -m USB_F_ECM -m USB_F_EEM -m USB_F_OBEX \
-  -m USB_F_PRINTER -m USB_F_SUBSET -m USB_F_SS_LB \
-  -m USB_F_UAC1 -m USB_F_UAC2 -m USB_F_UVC \
-  -e USB_CONFIGFS_RNDIS -e USB_CONFIGFS_ECM -e USB_CONFIGFS_ECM_SUBSET \
-  -e USB_CONFIGFS_EEM -e USB_CONFIGFS_OBEX -e USB_CONFIGFS_F_PRINTER \
-  -e USB_CONFIGFS_F_LB_SS -e USB_CONFIGFS_F_UAC1 -e USB_CONFIGFS_F_UAC1_LEGACY \
-  -e USB_CONFIGFS_F_UVC \
-  \`# === HID / force feedback === \` \
-  -e HID_PID \
-  \`# === 802.11 stack — virtual radio, mesh, wireless extensions === \` \
-  -m MAC80211_HWSIM -e MAC80211_LEDS -e MAC80211_MESH \
-  -e CFG80211_WEXT -e CFG80211_CRDA_SUPPORT \
-  -m LIB80211 -m LIB80211_CRYPT_WEP -m LIB80211_CRYPT_CCMP -m LIB80211_CRYPT_TKIP \
-  \`# === USB Wi-Fi adapters (random USB dongles) === \` \
-  -m MT76_USB -m MT76x0U -m MT76x2U -m MT7601U \
+  \`# === Bluetooth USB (Batch 2) === \` \
+  -m BT_HCIBTUSB -e BT_HCIBTUSB_AUTOSUSPEND \
+  -e BT_HCIBTUSB_BCM -e BT_HCIBTUSB_MTK -e BT_HCIBTUSB_RTL \
+  -m BT_HCIVHCI \
+  \`# === USB Wi-Fi adapter drivers (Batch 3) === \` \
+  -e WLAN_VENDOR_RALINK -e WLAN_VENDOR_MEDIATEK \
+  -e WLAN_VENDOR_ATH -e WLAN_VENDOR_BROADCOM \
+  -e WLAN_VENDOR_INTERSIL -e WLAN_VENDOR_ZYDAS \
+  -m MT76_CORE -m MT76_USB -m MT76x0U -m MT76x2U -m MT7601U \
   -m RT2X00 -m RT2X00_LIB_USB -m RT2800USB \
   -e RT2800USB_RT33XX -e RT2800USB_RT3573 -e RT2800USB_RT35XX \
   -e RT2800USB_RT53XX -e RT2800USB_RT55XX -e RT2800USB_UNKNOWN \
-  -m RTL8187 -e RTL8187_LEDS -m RTL8192CU -m RTL8XXXU -e RTL8XXXU_UNTESTED \
-  -m RTLWIFI_USB -m ATH9K -m ATH9K_HTC -m ATH10K_USB \
-  -m PRISM2_USB -m RSI_USB -m LIBERTAS_USB -m BRCMFMAC \
-  \`# === Bluetooth USB === \` \
-  -m BT_HCIBTUSB -e BT_HCIBTUSB_AUTOSUSPEND \
-  -e BT_HCIBTUSB_BCM -e BT_HCIBTUSB_MTK -e BT_HCIBTUSB_RTL \
-  -e BT_BCM -e BT_RTL -e BT_MTKSDIO \
-  -m BT_HCIVHCI -m BT_HCIBPA10X -m BT_HCIBFUSB -m BT_HCIBCM203X \
-  \`# === NFS server/client (for sharing during pentest) === \` \
+  -m ATH9K -m ATH9K_HTC -m ATH10K -m ATH10K_USB \
+  -m PRISM2_USB -m RSI_91X -m RSI_USB \
+  \`# === HID / virtual radio / NFS / diag (Batch 4-fixed) === \` \
+  -e HID_PID \
+  -m MAC80211_HWSIM \
+  -m LIB80211 -m LIB80211_CRYPT_WEP -m LIB80211_CRYPT_CCMP -m LIB80211_CRYPT_TKIP \
   -m NFS_FS -m NFS_V3 -m NFS_V4 -m NFSD -e NFSD_V3 -e NFSD_V4 \
-  \`# === Misc useful for tools === \` \
   -m PACKET_DIAG -m UNIX_DIAG -m INET_DIAG \
-  -e NETFILTER_XT_MATCH_MULTIPORT
+  -e NETFILTER_XT_MATCH_MULTIPORT \
+  \`# === DELIBERATELY EXCLUDED — break LOS 23.2 vendor ABI === \` \
+  -d CFG80211_WEXT -d MAC80211_MESH
 ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
 fi  # end NH_FEATURES
 

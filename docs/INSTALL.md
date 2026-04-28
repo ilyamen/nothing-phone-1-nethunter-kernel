@@ -83,6 +83,23 @@ adb sideload lineage-23.2-YYYYMMDD-nightly-Spacewar-signed.zip
 
 When done, recovery returns to its main menu. Tap **System → Reboot system now**. Phone boots into stock LOS. Complete first-time setup (skip Google sign-in if you want a clean device).
 
+### 0.2.5 — Enable USB debugging
+
+On a fresh LineageOS install, USB debugging is OFF by default. ADB won't see the phone until you enable it.
+
+On the phone:
+1. **Settings → About phone**
+2. Scroll down, find **Build number**, **tap it 7 times** in succession until "You are now a developer!" appears
+3. Go back. **Settings → System → Developer options**
+4. Toggle **USB debugging** ON
+5. Plug PC's USB cable in (or replug). On the phone, accept the **"Allow USB debugging?"** prompt — tick "Always allow from this computer" so it doesn't keep asking
+
+Verify ADB sees the phone:
+```bash
+adb devices
+# Should print: <serial>  device
+```
+
 ### 0.3 — Install Magisk root
 
 The boot.img we want to patch is the LOS one we just flashed. Easiest source: extract it from the LOS zip we already have (it's `boot.img` inside the zip's `images/` directory) — but we already have it standalone from step 0.2 above. Use that.

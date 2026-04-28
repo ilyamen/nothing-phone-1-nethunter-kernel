@@ -12,7 +12,11 @@ Version format: `vMAJOR.MINOR.PATCH` — major bumps on LOS major-version change
 
 ### Added
 
-- (in-flight changes go here)
+- `nh-overlay-base/service.sh` — automatic first-boot F-Droid repo addition via `fdroidrepos://` (HTTPS) intents. On first PIN unlock after install, fires `am start` for NetHunter Store and IzzyOnDroid; user just taps "Add" once. Marker file at `/data/adb/.nh-overlay-base.repos-added` ensures one-shot. Replaces the previously-shipped (and broken on F-Droid 1.18+) `additional_repos.xml` mechanism.
+
+### Fixed
+
+- Repo intent now uses `fdroidrepos://` (with S, HTTPS) instead of `fdroidrepo://`. The HTTP variant triggered F-Droid Ktor client's `Unhandled redirect: 301` because `store.nethunter.com` is HTTPS-only.
 
 ---
 

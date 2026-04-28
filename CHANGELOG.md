@@ -10,21 +10,15 @@ Version format: `vMAJOR.MINOR.PATCH` — major bumps on LOS major-version change
 
 ## [Unreleased]
 
-### Added
-
-- `nh-overlay-base/service.sh` — automatic first-boot F-Droid repo addition via `fdroidrepos://` (HTTPS) intents. On first PIN unlock after install, fires `am start` for NetHunter Store and IzzyOnDroid; user just taps "Add" once. Marker file at `/data/adb/.nh-overlay-base.repos-added` ensures one-shot. Replaces the previously-shipped (and broken on F-Droid 1.18+) `additional_repos.xml` mechanism.
-
-### Fixed
-
-- Repo intent now uses `fdroidrepos://` (with S, HTTPS) instead of `fdroidrepo://`. The HTTP variant triggered F-Droid Ktor client's `Unhandled redirect: 301` because `store.nethunter.com` is HTTPS-only.
+_(no in-flight changes)_
 
 ---
 
-## [v1.0.0] — TBD
+## [v1.0.0] — 2026-04-28
 
 **Initial public release.**
 
-**Kernel SHA:** `7bf1f200bd00e04ccb4b6e707df597303b5981bd`
+**Kernel SHA:** `de989ec045cf404f7dcd3a5dd819d8e6ea291f3a` (tip of `nethunter-23.2` after CI smoke-test workflow added; kernel-source byte-identical to `7bf1f200bd00e04ccb4b6e707df597303b5981bd`)
 **LineageOS base:** `lineage-23.2`
 **Toolchain:** AOSP Clang `r547379` (Clang 19.0.1)
 
@@ -36,8 +30,8 @@ Version format: `vMAJOR.MINOR.PATCH` — major bumps on LOS major-version change
   - RTL8812BU (Asus USB-AC58, etc.)
   - RTL8821CU (Mercusys MU-6H, etc.)
   - Custom `xmit_tasklet` CFI signature fix for 88x2bu and 8188eu (PR #1041 missed these)
-- 8 Magisk modules:
-  - `nh-overlay-base` — NetHunter apps in /system/priv-app + F-Droid + NetHunter F-Droid repo (replaces deprecated NetHunter Store)
+- 9 Magisk modules:
+  - `nh-overlay-base` v1.1 — NetHunter apps in /system/priv-app + F-Droid + F-Droid Privileged Extension. Auto-adds NetHunter Store + IzzyOnDroid F-Droid repos on first PIN unlock via `fdroidrepos://` intents (replaces deprecated NetHunter Store).
   - `nh-logcatd` v2 — 8-layer persistent logging with auto-incident-freeze on kernel panic, 32 MB rotating logcat, 24 hourly dmesg snapshots, 50 boot dmesg history, 400 MB hard cap
   - `realtek-wifi-cfi-fix` — auto-loads 3 Realtek drivers on boot
   - `nh-wifi-adb` — ADB over TCP port 44444

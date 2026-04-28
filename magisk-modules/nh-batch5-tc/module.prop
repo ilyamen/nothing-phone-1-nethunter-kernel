@@ -1,0 +1,6 @@
+id=nh-batch5-tc
+name=NetHunter Batch5 Traffic Control (TC actions + cls_bpf)
+version=v1.0
+versionCode=1
+author=ilyamen
+description=Loads TC action modules (act_bpf, act_mirred, act_nat, act_pedit) and cls_bpf classifier. Use for fakeAP traffic redirection, redsocks, BPF-based filtering. Disable via Magisk Manager to unload.

@@ -1,7 +1,59 @@
-.tmp-*
-local-backup-*/*.img
-local-backup-*/*.img.gz
+# =====================================================================
+# Build outputs — go to GitHub Releases instead of git history
+# =====================================================================
+output/
+artifacts/
+staging-modules/
+release-staging/
+*.img
+*.img.gz
+*.tar.xz
+magisk-modules/build/**
+magisk-modules/external/**
+magisk-modules/**/*.zip
+
+# =====================================================================
+# Private / device-specific data — NEVER commit
+# =====================================================================
+# Partition backups contain IMEI, MAC, FRP token, IMSI keys
+local-backup-*/
 partial-live-*/
+spacewar-private-backups/
+
+# Stock boot.img (user-specific, dumped from their own device)
+stock-boot*.img
+
+# Third-party APKs (link to upstream from docs/INSTALL.md instead)
+installers/*.apk
+
+# =====================================================================
+# Toolchain / build cache — too big for git
+# =====================================================================
+aosp-clang/
+clang-r*/
+*.tar.gz
+
+# =====================================================================
+# Debugging scratch / forensics
+# =====================================================================
+.tmp-*
+.test-fetch/
 panic-*.txt
 panic-*.gz
-output/
+running-config.gz
+*.log
+
+# =====================================================================
+# OS / editor noise
+# =====================================================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# Third-party APKs in nh-overlay-base — downloaded by scripts/fetch-nh-apks.sh
+# at build time, not redistributed via git
+magisk-modules/*/system/priv-app/*/*.apk
+

@@ -1,0 +1,6 @@
+id=nh-batch5-net-extras
+name=NetHunter Batch5 Net-Extras (USB CDC + PPP + L2TP)
+version=v1.0
+versionCode=1
+author=ilyamen
+description=Loads USB CDC drivers (NCM, MBIM, EEM, WDM) for USB-tethering peripherals + PPP async/synctty + L2TP IP/Ethernet. Disable via Magisk Manager to unload.

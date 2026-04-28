@@ -1,0 +1,172 @@
+name: Build & Release
+
+# Manual trigger only — no auto-build on push (we make many WIP commits;
+# don't want a release per push). Click "Run workflow" in Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.0)'
+        required: true
+        type: string
+      kernel_sha:
+        description: 'Kernel SHA override (default: from kernel-pin.env)'
+        required: false
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: 'Create as draft (do not publish yet)'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Build kernel + modules + release
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write   # need to push tags + create releases
+
+    steps:
+      - name: Free disk space (default GH runner has 14 GB free, we need ~15)
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache /usr/local/share/boost
+          sudo apt-get clean
+          df -h
+
+      - name: Checkout build-repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # we need git tags for versioning
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ccache curl flex git libssl-dev \
+            libelf-dev libncurses-dev wget xz-utils zip rsync python3 \
+            cpio kmod
+          # gh CLI is preinstalled on ubuntu-latest
+
+      - name: Load kernel-pin.env
+        id: pin
+        run: |
+          set -a; . kernel-pin.env; set +a
+          # Override KERNEL_SHA if input provided
+          if [ -n "${{ github.event.inputs.kernel_sha }}" ]; then
+            KERNEL_SHA="${{ github.event.inputs.kernel_sha }}"
+          fi
+          echo "KERNEL_REPO=$KERNEL_REPO" >> $GITHUB_ENV
+          echo "KERNEL_REF=$KERNEL_REF" >> $GITHUB_ENV
+          echo "KERNEL_SHA=$KERNEL_SHA" >> $GITHUB_ENV
+          echo "ANYKERNEL_REPO=$ANYKERNEL_REPO" >> $GITHUB_ENV
+          echo "ANYKERNEL_REF=$ANYKERNEL_REF" >> $GITHUB_ENV
+          echo "RTL8188EUS_REPO=$RTL8188EUS_REPO" >> $GITHUB_ENV
+          echo "RTL88X2BU_REPO=$RTL88X2BU_REPO" >> $GITHUB_ENV
+          echo "RTL8821CU_REPO=$RTL8821CU_REPO" >> $GITHUB_ENV
+          echo "TOOLCHAIN_VERSION=$TOOLCHAIN_VERSION" >> $GITHUB_ENV
+          echo "TOOLCHAIN_URL=$TOOLCHAIN_URL" >> $GITHUB_ENV
+          echo "MKDTBOIMG_URL=$MKDTBOIMG_URL" >> $GITHUB_ENV
+
+      - name: Cache AOSP Clang toolchain (~6 GB; saves 5 min per run)
+        uses: actions/cache@v4
+        with:
+          path: /tmp/aosp-clang/clang-${{ env.TOOLCHAIN_VERSION }}
+          key: aosp-clang-${{ env.TOOLCHAIN_VERSION }}-v1
+
+      - name: Clone external sources (kernel, AnyKernel, Realtek)
+        run: |
+          mkdir -p /tmp/work && cd /tmp/work
+          git clone --depth=50 -b "$KERNEL_REF" --single-branch "$KERNEL_REPO" kernel-los
+
+          ACTUAL_SHA=$(git -C kernel-los rev-parse HEAD)
+          if [ "$ACTUAL_SHA" != "$KERNEL_SHA" ]; then
+            # Try fetching exact SHA if not on tip of branch
+            git -C kernel-los fetch origin "$KERNEL_SHA"
+            git -C kernel-los checkout "$KERNEL_SHA"
+            ACTUAL_SHA=$(git -C kernel-los rev-parse HEAD)
+            if [ "$ACTUAL_SHA" != "$KERNEL_SHA" ]; then
+              echo "::error::Kernel SHA mismatch: expected $KERNEL_SHA, got $ACTUAL_SHA"
+              exit 1
+            fi
+          fi
+          echo "Kernel @ $ACTUAL_SHA"
+
+          git clone --depth=1 "$RTL8188EUS_REPO"
+          git clone --depth=1 "$RTL88X2BU_REPO"
+          git clone --depth=1 "$RTL8821CU_REPO"
+          git clone --depth=1 -b "$ANYKERNEL_REF" "$ANYKERNEL_REPO" ak3-spacewar
+
+          curl -sLf "$MKDTBOIMG_URL" -o kernel-los/scripts/mkdtboimg.py
+          chmod +x kernel-los/scripts/mkdtboimg.py
+
+      - name: Download AOSP Clang (cached)
+        run: |
+          mkdir -p /tmp/aosp-clang
+          if [ ! -d "/tmp/aosp-clang/clang-${TOOLCHAIN_VERSION}/bin" ]; then
+            cd /tmp/aosp-clang
+            wget -q "$TOOLCHAIN_URL" -O "clang-${TOOLCHAIN_VERSION}.tar.gz"
+            mkdir -p "clang-${TOOLCHAIN_VERSION}"
+            tar -xf "clang-${TOOLCHAIN_VERSION}.tar.gz" -C "clang-${TOOLCHAIN_VERSION}"
+            rm -f "clang-${TOOLCHAIN_VERSION}.tar.gz"
+          fi
+          /tmp/aosp-clang/clang-${TOOLCHAIN_VERSION}/bin/clang --version | head -1
+
+      - name: Apply Realtek CFI patches
+        run: |
+          cd /tmp/work
+          for d in rtl8188eus 88x2bu-20210702 8821cu-20210916; do
+            patch="$GITHUB_WORKSPACE/realtek-patches/${d}-cfi-fix.patch"
+            [ -f "$patch" ] || continue
+            ( cd "$d" && patch -p1 < "$patch" )
+          done
+
+      - name: Configure kernel (running-config baseline + NH features)
+        run: |
+          cd /tmp/work/kernel-los
+          export ARCH=arm64 SUBARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang \
+                 CROSS_COMPILE=aarch64-linux-gnu- \
+                 PATH=/tmp/aosp-clang/clang-${TOOLCHAIN_VERSION}/bin:$PATH
+          unset LOCALVERSION
+
+          mkdir -p out
+          curl -sSLf "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/running-config.gz" \
+            -o /tmp/running-config.gz
+          gunzip -c /tmp/running-config.gz > out/.config
+          make O=out olddefconfig
+          # NH features applied by 04-configure.sh logic — replicate inline:
+          # (could also `bash $GITHUB_WORKSPACE/scripts/04-configure.sh` if we
+          # refactor that script to be docker-optional; for now duplicate the
+          # ./scripts/config invocations.)
+          # TODO: factor 04-configure into a sourceable function so CI and
+          # local builds share the exact same config-set logic.
+
+      - name: Build kernel + modules (TODO — requires 04 refactor)
+        run: |
+          echo "::warning::Full CI build pending refactor of 04/05/06 to be CI-friendly."
+          echo "For now, use scripts/10-make-release.sh locally."
+
+      # Once build runs, the rest is:
+      #
+      # - Pack AnyKernel3:    bash $GITHUB_WORKSPACE/scripts/07-package-zip.sh
+      # - Pack boot.img:      bash $GITHUB_WORKSPACE/scripts/08-pack-boot-img.sh "$VERSION"
+      # - Pack modules:       bash $GITHUB_WORKSPACE/scripts/09-build-magisk-modules.sh
+      # - Make release:       bash $GITHUB_WORKSPACE/scripts/10-make-release.sh "$VERSION" --no-upload
+      # - Upload via gh:      see action below
+
+      - name: Create GitHub Release
+        if: false   # disabled until build step is functional
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: "NetHunter Kernel ${{ inputs.version }} — Nothing Phone 1 (spacewar)"
+          body_path: release-notes/${{ inputs.version }}.md
+          prerelease: ${{ inputs.prerelease }}
+          draft: ${{ inputs.draft }}
+          files: release-staging/${{ inputs.version }}/*
+          fail_on_unmatched_files: true

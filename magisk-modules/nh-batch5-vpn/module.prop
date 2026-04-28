@@ -1,0 +1,6 @@
+id=nh-batch5-vpn
+name=NetHunter Batch5 VPN (WireGuard)
+version=v1.0
+versionCode=1
+author=ilyamen
+description=Auto-loads WireGuard kernel module + crypto deps (chacha-neon, poly1305-neon, libchacha20poly1305, libcurve25519). After install + reboot, `wg-quick up wg0` works out of the box. Disable via Magisk Manager to unload.

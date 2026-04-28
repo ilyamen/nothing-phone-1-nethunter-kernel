@@ -1,0 +1,6 @@
+id=nh-batch6-usb-serial
+name=NetHunter Batch6 USB Serial + Modems
+version=v1.0
+versionCode=1
+author=ilyamen
+description=USB Serial drivers (FTDI, CH341, PL2303, CP210x, OPTION, Qualcomm) + USB CDC ACM + cellular modems (Huawei NCM, QMI WWAN) + USB Printer host. Auto-loads at boot. Plug your FTDI/Arduino/USB-modem and it just works. Disable via Magisk Manager to unload.

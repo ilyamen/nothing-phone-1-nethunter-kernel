@@ -1,96 +1,94 @@
-# Nothing Phone 1 (spacewar) — NetHunter Kernel + External Wi-Fi Drivers
+# Nothing Phone (1) NetHunter — Build & Release
 
-Custom Kali NetHunter kernel for the **Nothing Phone 1 (codename: spacewar / A063)** running **LineageOS 23.2 (Android 16)** + Magisk 30.7. Verified end-to-end: monitor mode + capture on internal *and* external Wi-Fi, packet inject on external Realtek dongles.
+Custom Kali NetHunter kernel + Magisk modules for **Nothing Phone (1)** (codename `spacewar`, model `A063`) running **LineageOS 23.2 (Android 16)**.
 
-> **For the full timeline + bug catalogue + final state, read [docs/BUILD-LOG-2026-04-26.md](docs/BUILD-LOG-2026-04-26.md).**
-> **Resuming on a new PC? Read [docs/CONTINUE-ON-NEW-PC.md](docs/CONTINUE-ON-NEW-PC.md).**
+## I just want to flash it
 
-## What's in this build
+→ Download the latest release: [Releases](../../releases/latest)
+→ Follow [docs/INSTALL.md](docs/INSTALL.md)
 
-- **Kernel:** `5.4.302-qgki-g192e5b024436-dirty` based on [`kimocoder/android_kernel_lineage_nothing_sm7325`](https://github.com/kimocoder/android_kernel_lineage_nothing_sm7325) branch `nethunter-23.0` (= upstream LOS lineage 5.4.302-qgki + Kali QCACLD inject 17-patch series), built with **AOSP Clang `r536225`** (Clang 19.0.1).
-- **Defconfig:** `vendor/lahaina-qgki_defconfig` + `vendor/debugfs.config` (canonical LOS approach).
-- **CFI=on + LTO=on** — required for LineageOS 23.2 vendor modules (sensors, audio, network indicators) to load.
-- **Realtek CFI signature fix (PR #1041 by GeorgeBannister)** applied to all 3 out-of-tree drivers — required to avoid kernel panic on `iw set type monitor`. See [docs/CFI-FIX.md](docs/CFI-FIX.md).
-- **Kali NetHunter QCACLD-3.0 17-patch injection series** applied to internal `wlan.ko`. See [docs/INTERNAL-WIFI-MONITOR.md](docs/INTERNAL-WIFI-MONITOR.md).
-- **Deterministic config-match build approach** — modules are built against `Module.symvers` byte-identical to what's running on the phone, so no boot.img reflash needed when only modules change. See `docs/BUILD-LOG-2026-04-26.md` (Bug 13).
+## What you get
 
-## What works
+- **Custom kernel** with Kali NetHunter QCACLD-3.0 frame injection (Wi-Fi monitor mode + packet inject from internal `wlan0`)
+- **3 Realtek USB Wi-Fi drivers** with CFI fix: RTL8188EUS, RTL8812BU, RTL8821CU — work in monitor mode + injection
+- **Full NetHunter feature set** in kernel: USBIP, Bluetooth USB Arsenal, BadUSB-ready (HID Gadget configfs), DriveDroid (mass-storage gadget), USB Serial (FTDI/CH341/PL2303/CP210x/cellular modems), USB Ethernet host (RTL8152, AX88179) + gadget (RNDIS/ECM/EEM), DVB-USB-RTL28xxU (RTL-SDR), MAC80211_HWSIM (evil twin)
+- **WireGuard VPN** + crypto deps
+- **NTFS read+write, CIFS/SMB**
+- **L2TPv3, PPP_MULTILINK, TC actions**
+- **Persistent logging** with auto-incident-freeze on kernel panic ([nh-logcatd](magisk-modules/nh-logcatd/))
 
-| Sub-system | Status |
-|------------|--------|
-| Daily phone use (calls, sensors, battery icon, audio) | ✅ |
-| Magisk root | ✅ |
-| External Realtek drivers auto-load on boot | ✅ via Magisk module |
-| `iw set type monitor` on Realtek wlan1 | ✅ no panic |
-| `tcpdump`/`airodump-ng` on Realtek wlan1 | ✅ |
-| `aireplay-ng` deauth/inject on Realtek wlan1 | ✅ |
-| Internal WiFi `wlan0` daily STA mode | ✅ |
-| Internal WiFi `wlan0` monitor + capture (via `con_mode=4`) | ✅ |
-| Internal WiFi `wlan0` inject via standard `aireplay-ng` | ❌ kernel panic — see [docs/INTERNAL-WIFI-MONITOR.md](docs/INTERNAL-WIFI-MONITOR.md) |
-| NetHunter Manager + Store + NHTerm + Kali 2026.1 chroot | ✅ |
+## I want to build it myself
 
-## Verified Realtek adapters
-
-| Adapter | Chipset | USB ID | Module | Field-tested |
-|---|---|---|---|---|
-| TP-Link TL-WN722N v3 | RTL8188EUS | `2357:010c` | `8188eu.ko` | ✅ monitor + inject + capture |
-| Asus USB-AC58 | RTL8812BU | `0b05:19aa` | `88x2bu.ko` | ⏳ built, not yet field-tested |
-| Mercusys MU-6H | RTL8811CU | `0bda:c811` (after `usb_modeswitch`) | `8821cu.ko` | ⏳ built, not yet field-tested |
-
-## Quick install (assuming clean LOS 23.2 + Magisk on phone)
+You'll need:
+- Linux or WSL2 + Docker (~10 GB free)
+- ~6 GB more for AOSP Clang `r547379` (auto-downloaded)
+- ~30 minutes per build
 
 ```bash
-# 0. Pull running config from phone (one-time)
-adb shell "su -c 'cat /proc/config.gz'" > running-config.gz
-
-# 1. Build kernel + modules
-scripts/01-setup-container.sh
-scripts/02-clone-sources.sh
-scripts/03-apply-patches.sh         # incl. Realtek CFI fix from PR #1041
-scripts/04-configure.sh             # uses running-config.gz for deterministic match
-scripts/05-build-kernel.sh
-scripts/06-build-modules.sh         # Realtek .ko in /work/modules-FINAL/
-
-# 2. Push Realtek modules + install Magisk module (auto-load on boot)
-adb push output/realtek-wifi-cfi-fix-v1.0.zip /sdcard/Download/
-adb shell "su -c 'magisk --install-module /sdcard/Download/realtek-wifi-cfi-fix-v1.0.zip && \
-                  unzip -o /sdcard/Download/realtek-wifi-cfi-fix-v1.0.zip \
-                        -d /data/adb/modules/realtek-wifi-cfi-fix -x META-INF/*'"
-adb reboot
-
-# 3. (Optional) Install NetHunter app + chroot
-adb install installers/NetHunterStore.apk
-adb install installers/NetHunter-2026.1.apk
-adb shell "am start -n com.offsec.nethunter/.AppNavHomeActivity"
-# In app: Allow root → Chroot Manager → Install kalifs-arm64-minimal
+git clone https://github.com/ilyamen/nothing-phone-1-nethunter-kernel
+cd nothing-phone-1-nethunter-kernel
+scripts/01-setup-container.sh    # Docker container with build deps
+scripts/02-clone-sources.sh      # Pulls kernel + AnyKernel + Realtek + toolchain
+scripts/03-apply-patches.sh      # Applies Realtek CFI patches
+scripts/04-configure.sh          # NH_FEATURES_NET=1 by default
+scripts/05-build-kernel.sh       # Builds Image + dtbs + .ko modules
+scripts/06-build-modules.sh      # Builds Realtek out-of-tree drivers
+scripts/07-package-zip.sh        # AnyKernel3 zip
+scripts/08-pack-boot-img.sh      # Repacks stock boot.img with new kernel
+scripts/09-build-magisk-modules.sh   # Packs all 8 Magisk module zips
 ```
 
-## Why this build exists
+To make a GitHub release after building:
+```bash
+git tag -a v1.0.0 -m 'Release v1.0.0'
+scripts/10-make-release.sh v1.0.0
+```
 
-The official Kali NetHunter [devices.yml](https://gitlab.com/kalilinux/nethunter/build-scripts/kali-nethunter-devices/-/raw/main/devices.yml) entry for spacewar points to `kimocoder/android_kernel_nothing_sm7325 -b nethunter-stable` — **that repo is 404**, source is gone. The fork at `kimocoder/android_kernel_lineage_nothing_sm7325 -b nethunter-23.0` boot-loops on LOS 23.2 because its base is too old.
+Full build documentation in [docs/BUILD.md](docs/BUILD.md). Bug catalogue from initial development in [docs/BUILD-LOG-2026-04-26.md](docs/BUILD-LOG-2026-04-26.md).
 
-Solution: take **upstream LineageOS source** (which has the modern device tree + Android 16 vendor compatibility), apply **Kali's 17-patch QCACLD inject series** via `git am`, apply **PR #1041 CFI fix** to Realtek drivers, build with **AOSP Clang r536225 + CFI=on + LTO=on**.
+## Repo layout
 
-## Build it yourself
+| Dir | What |
+|---|---|
+| `scripts/` | Build pipeline (01–10) |
+| `kernel-pin.env` | Pinned kernel SHA + toolchain version |
+| `magisk-modules/` | Source for 8 Magisk modules |
+| `realtek-patches/` | CFI fixes for the out-of-tree Realtek USB Wi-Fi drivers |
+| `phone-scripts/` | Optional Termux:Widget helpers (run on phone) |
+| `docs/` | Build, flash, debug docs |
+| `.github/workflows/` | Manual-trigger release workflow |
 
-- [docs/BUILD.md](docs/BUILD.md) — original build doc (now points to the docker pipeline).
-- [docs/BUILD-LOG-2026-04-26.md](docs/BUILD-LOG-2026-04-26.md) — **comprehensive log with all 18 bugs and fixes**.
-- [docs/CFI-FIX.md](docs/CFI-FIX.md) — Realtek PR #1041 explained.
-- [docs/INTERNAL-WIFI-MONITOR.md](docs/INTERNAL-WIFI-MONITOR.md) — `con_mode=4` workflow + inject panic root-cause.
-- [docs/CONTINUE-ON-NEW-PC.md](docs/CONTINUE-ON-NEW-PC.md) — resume work on a different machine.
-- [docs/MERCUSYS-USB-MODESWITCH.md](docs/MERCUSYS-USB-MODESWITCH.md) — getting MU-6H out of CD-ROM mode.
-- [docs/FLASH.md](docs/FLASH.md) / [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md) — original repo docs.
+The kernel source itself is a separate repo:
+→ https://github.com/ilyamen/android_kernel_nothing_sm7325_nethunter
 
-## Credits
+## Magisk modules
 
-- [@kimocoder](https://github.com/kimocoder) — kernel source + AnyKernel3 + Kali QCACLD-3.0 inject patch series
-- [@GeorgeBannister](https://github.com/aircrack-ng/rtl8812au/pull/1041) — CFI signature fix for Realtek (PR #1041)
-- [LineageOS](https://github.com/LineageOS/android_kernel_qcom_sm8350) — upstream kernel
-- Google AOSP — Clang `r536225` prebuilt toolchain
-- [@aircrack-ng](https://github.com/aircrack-ng) — `rtl8188eus`
-- [@morrownr](https://github.com/morrownr) — `88x2bu-20210702`, `8821cu-20210916`
-- Kali Linux NetHunter team — build infrastructure
+| Module | Purpose | Required? |
+|---|---|---|
+| `nh-overlay-base` | NetHunter apps in `/system/priv-app`, F-Droid client + repos, addon.d | recommended |
+| `nh-logcatd` | Persistent kernel + userspace logs, auto-freeze panic incidents | recommended |
+| `realtek-wifi-cfi-fix` | Realtek USB Wi-Fi drivers + CFI fix | only if using USB Wi-Fi |
+| `nh-wifi-adb` | ADB on TCP port 44444 | optional |
+| `nh-batch5-vpn` | WireGuard kernel module + crypto deps | optional |
+| `nh-batch5-storage` | NTFS, CIFS modules | optional |
+| `nh-batch5-net-extras` | USB CDC, PPP, L2TP modules | optional |
+| `nh-batch5-tc` | TC actions modules | optional |
+| `nh-batch6-usb-serial` | FTDI/CH341/PL2303/CP210x + cellular USB modems | optional |
+
+## Releases
+
+See [CHANGELOG.md](CHANGELOG.md). Releases are cut manually via `scripts/10-make-release.sh` or via the "Build & Release" GitHub Action on this repo (manual trigger).
 
 ## License
 
-GPL-2.0 (kernel and drivers). Configs/scripts in this repo: MIT.
+GPL-2.0 for kernel source and derived `.ko` modules. MIT for the build scripts and configuration files. See [LICENSE](LICENSE) and individual file headers.
+
+## Credits
+
+- [LineageOS](https://lineageos.org/) — base kernel ([android_kernel_nothing_sm7325](https://github.com/LineageOS/android_kernel_nothing_sm7325))
+- [Kali Linux NetHunter](https://www.kali.org/docs/nethunter/) — QCACLD-3.0 frame injection patch
+- [kimocoder](https://github.com/kimocoder) — pioneering NetHunter for Nothing Phone (1), [AnyKernel3 spacewar branch](https://github.com/kimocoder/AnyKernel3/tree/spacewar)
+- [GeorgeBannister](https://github.com/aircrack-ng/rtl8812au/pull/1041) — Realtek CFI fix base
+- [aircrack-ng team](https://github.com/aircrack-ng/rtl8188eus) — RTL8188EUS upstream
+- [morrownr](https://github.com/morrownr) — RTL8812BU + RTL8821CU upstreams
+- [topjohnwu](https://github.com/topjohnwu/Magisk) — Magisk root framework

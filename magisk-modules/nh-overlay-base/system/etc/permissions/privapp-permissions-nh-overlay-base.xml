@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  privapp-permissions whitelist for NetHunter overlay.
+  Required because LineageOS 23.2 user-builds set
+    ro.control_privapp_permissions=enforce
+  which crashes system_server with IllegalStateException if any /system/priv-app
+  declares a signature|privileged permission that's not in this XML.
+
+  Permission lists derived from system_server crash logs at first boot.
+-->
+<permissions>
+
+    <!-- F-Droid Privileged Extension: silent app install/delete -->
+    <privapp-permissions package="org.fdroid.fdroid.privileged">
+        <permission name="android.permission.INSTALL_PACKAGES"/>
+        <permission name="android.permission.DELETE_PACKAGES"/>
+    </privapp-permissions>
+
+    <!-- NetHunter app: pen-test functionality requires multiple sig|priv perms -->
+    <privapp-permissions package="com.offsec.nethunter">
+        <permission name="android.permission.BLUETOOTH_PRIVILEGED"/>
+        <permission name="android.permission.MANAGE_WIFI_INTERFACES"/>
+        <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+        <permission name="android.permission.CHANGE_CONFIGURATION"/>
+        <permission name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    </privapp-permissions>
+
+    <!-- NetHunter Terminal: needs to read system logs -->
+    <privapp-permissions package="com.offsec.nhterm">
+        <permission name="android.permission.READ_LOGS"/>
+    </privapp-permissions>
+
+    <!--
+      NetHunter KeX: when included (currently empty in v1.0 build), may
+      additionally require permissions like SYSTEM_ALERT_WINDOW or similar.
+      Add when KeX apk is bundled.
+    -->
+
+</permissions>

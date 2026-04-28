@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Additional F-Droid repositories pre-configured for NetHunter users.
+  F-Droid client (since v1.13) reads /system/etc/org.fdroid.fdroid/additional_repos.xml
+  on first launch and adds these repos in addition to its built-in defaults.
+
+  Each repo is 12 elements:
+    name, url, sigstoreUrl, mirrors, version, timestamp, description,
+    isSwap, pubKey, fingerprint, inUse, priority
+
+  Empty <item></item> means "leave default / fetch on first refresh".
+-->
+<resources>
+  <string-array name="default_repos" translatable="false">
+
+    <!-- Kali NetHunter Store -->
+    <item>NetHunter Store</item>
+    <item>https://store.nethunter.com/repo</item>
+    <item></item>
+    <item></item>
+    <item>16</item>
+    <item>0</item>
+    <item>Kali NetHunter pen-test apps repository (official)</item>
+    <item>false</item>
+    <item></item>
+    <item>FE7A23DFC003A1CF2D2ADD2469B9C0C49B206BA5DC9EDD6563B3B7EB6A8F5FAB</item>
+    <item>true</item>
+    <item>15</item>
+
+    <!-- IzzyOnDroid: Wireshark, Termius, hundreds of pen-test relevant apps -->
+    <item>IzzyOnDroid</item>
+    <item>https://apt.izzysoft.de/fdroid/repo</item>
+    <item></item>
+    <item></item>
+    <item>16</item>
+    <item>0</item>
+    <item>IzzyOnDroid F-Droid Repo (Wireshark, security tools, etc.)</item>
+    <item>false</item>
+    <item></item>
+    <item>3BF0D6ABFEAE2F401707B6D966BE743BF0EEE49C2561B9BA39073711F628937A</item>
+    <item>true</item>
+    <item>10</item>
+
+  </string-array>
+</resources>

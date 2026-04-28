@@ -1,0 +1,6 @@
+id=nh-batch5-storage
+name=NetHunter Batch5 Storage (NTFS + CIFS)
+version=v1.0
+versionCode=1
+author=ilyamen
+description=Loads NTFS read+write driver and CIFS/SMB client (with dns_resolver dep). Mount Windows shares via `mount -t cifs //host/share /mnt/...`. NTFS USB drives mount via `mount -t ntfs /dev/blockN /mnt/...`. Disable via Magisk Manager to unload.

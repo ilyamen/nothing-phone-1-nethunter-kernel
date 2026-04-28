@@ -32,7 +32,14 @@ else
   echo "[+] Using deterministic running-config.gz from build-repo (fetched via curl inside container)"
 fi
 
-docker exec -i $CONTAINER bash <<EOF
+docker exec -i \
+  -e NH_FEATURES="${NH_FEATURES:-1}" \
+  -e NH_FEATURES_NET="${NH_FEATURES_NET:-1}" \
+  -e NH_FEATURES_USB="${NH_FEATURES_USB:-1}" \
+  -e NH_FEATURES_GADGET="${NH_FEATURES_GADGET:-1}" \
+  -e NH_FEATURES_GADGET_NET="${NH_FEATURES_GADGET_NET:-1}" \
+  -e DEBUG_KERNEL="${DEBUG_KERNEL:-0}" \
+  $CONTAINER bash <<EOF
 set -e
 export MSYS_NO_PATHCONV=1
 cd /work/kernel-los
@@ -123,6 +130,128 @@ echo "[*] NH_FEATURES=1 — enabling verified NetHunter feature flags"
 ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
 fi  # end NH_FEATURES
 
+# Batch 5 — "safe modular pack" for NetHunter networking/VPN/SDR/USB-Eth/CAN.
+# All =m, NO auto-load → cannot break boot. Loaded on demand by user
+# (insmod, modprobe, or by hotplug when matching device is plugged in).
+#
+# What this enables:
+#  • WireGuard      — modern VPN (10x faster than OpenVPN)
+#  • USB Ethernet   — RTL8152/3 (Ugreen 20265 etc), AX88179 (ASIX), CDC-NCM/EEM
+#  • CAN bus        — car hacking via USB-CAN dongles (GS_USB)
+#  • DVB-USB RTL28  — turn $10 DVB-T stick into RTL-SDR receiver
+#  • NFQUEUE        — mitmproxy/bettercap MITM target
+#  • NTFS3          — read/write NTFS USB drives (modern in-kernel impl, replaces FUSE)
+#  • CIFS/SMB       — mount Windows shares
+#  • PPP/L2TP/PPTP  — legacy VPN protocols
+#  • TC/BPF actions — fakeAP / redsocks / traffic shaping
+#
+# To skip this batch entirely set NH_FEATURES_NET=0.
+#
+# CRITICAL RULE for Batch 5: NEVER use \`-m FLAG\` on a config that's
+# already =y in running-config.gz. Demoting builtin → module REMOVES code from
+# vmlinux, changes its export-table layout, and shifts CRCs of dozens of
+# unrelated symbols → vendor /vendor/lib/modules/*.ko fail modversions check
+# → sensors/icnss2/audio all dead. Verified empirically 2026-04-28.
+#
+# So: only flags that are "# not set" in baseline get \`-m\`. Everything that
+# is already \`=y\` we leave alone (the running config is already richer than
+# we'd ever set up by hand).
+#
+# Also DELIBERATELY EXCLUDED:
+#  • CAN (and friends): \`IS_ENABLED(CONFIG_CAN)\` adds \`struct netns_can\` to
+#    \`struct net\` → 3373 vmlinux symbols change CRC → vendor stack dead.
+#    GKI ABI break on this LineageOS kernel; cannot enable in-tree.
+#  • DVB-USB / MEDIA / I2C_MUX: built-in \`=y\` selects pulled too many vendor
+#    init paths and broke camera I2C bus on first boot. Use software RTL-SDR
+#    via TCP from PC instead, or build standalone DVB modules later.
+if [ "\${NH_FEATURES_NET:-1}" = "1" ]; then
+echo "[*] NH_FEATURES_NET=1 — Batch 5 (verified safe set, NO downgrades, NO CAN)"
+./scripts/config --file out/.config \
+  \`# === WireGuard (auto-pulls CRYPTO_LIB_CHACHA20POLY1305 etc as =m) === \` \
+  -m WIREGUARD \
+  \`# === Modern USB Ethernet (CDC family — Ugreen 20265 RTL8153 already =y in base) === \` \
+  -m USB_NET_CDC_NCM -m USB_NET_CDC_EEM -m USB_NET_CDC_MBIM -m USB_WDM \
+  \`# === Netfilter NFQUEUE — already =y in base. NFACCT excluded: enabling \` \
+  \`#     NETFILTER_NETLINK_ACCT adds \\\`nfnl_acct_list\\\` to struct net (same \` \
+  \`#     trap as CAN). NFQUEUE itself works fine without this. \` \
+  \`# === PPP extras (core PPP/MPPE/etc already =y in base) === \` \
+  -m PPP_ASYNC -m PPP_SYNC_TTY -e PPP_FILTER -e PPP_MULTILINK \
+  \`# === L2TP extras (core L2TP already =y in base; V3 enables IP/ETH/DEBUGFS) === \` \
+  -e L2TP_V3 -m L2TP_IP -m L2TP_ETH -m L2TP_DEBUGFS \
+  \`# === TC actions (NET_CLS_BPF already =y in base) === \` \
+  -m NET_ACT_BPF -m NET_ACT_MIRRED -m NET_ACT_NAT -m NET_ACT_PEDIT \
+  \`# === NTFS read+write (5.4 has NTFS_FS only — NTFS3 added in 5.15) === \` \
+  -m NTFS_FS -e NTFS_RW \
+  \`# === CIFS/SMB (CIFS=m + extras as bool sub-flags) === \` \
+  -m CIFS -e CIFS_UPCALL -e CIFS_XATTR -e CIFS_POSIX -e CIFS_DFS_UPCALL \
+  \`# === DVB-USB RTL28xxU (RTL-SDR via $10 USB DVB-T dongle). \` \
+  \`#     None of MEDIA/DVB/I2C_MUX adds fields to struct net/sk_buff/netdev/sock — \` \
+  \`#     verified clean via header grep 2026-04-28. Top-level toggles are bool, \` \
+  \`#     RTL28XXU needs I2C_MUX as a hard dep. \` \
+  -m MEDIA_SUPPORT -e MEDIA_DIGITAL_TV_SUPPORT -e MEDIA_USB_SUPPORT \
+  -m I2C_MUX -m DVB_CORE -e DVB_USB_V2 -e DVB_USB_RTL28XXU
+ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
+fi  # end NH_FEATURES_NET
+
+# Batch 6 — USB Serial / CDC ACM / cellular USB / USB Audio / USB Printer (host).
+# All =m, NO auto-load — kernel just gains capability. When user plugs FTDI/CH341/
+# Arduino/Huawei modem etc. the kernel hotplugs the matching .ko.
+# Verified safe by struct net/sk_buff/netdev/sock conditional-field grep — none of
+# these flags add fields to vendor-exported structs. CRC drift expected ~40 (noise).
+if [ "\${NH_FEATURES_USB:-1}" = "1" ]; then
+echo "[*] NH_FEATURES_USB=1 — Batch 6: USB Serial + ACM + cellular + audio/printer host"
+./scripts/config --file out/.config \
+  \`# === USB Serial bus + popular adapters === \` \
+  -m USB_SERIAL -e USB_SERIAL_GENERIC \
+  -m USB_SERIAL_FTDI_SIO -m USB_SERIAL_CH341 -m USB_SERIAL_PL2303 \
+  -m USB_SERIAL_CP210X -m USB_SERIAL_OPTION -m USB_SERIAL_QUALCOMM \
+  -m USB_SERIAL_WWAN \
+  -m USB_SERIAL_SIERRAWIRELESS -m USB_SERIAL_KEYSPAN -m USB_SERIAL_NAVMAN \
+  \`# === USB CDC ACM (modems / Arduino-style) === \` \
+  -m USB_ACM \
+  \`# === Cellular USB modems (Huawei, Sierra, MBIM via QMI) === \` \
+  -m USB_NET_HUAWEI_CDC_NCM -m USB_NET_QMI_WWAN \
+  \`# === USB Audio capture (host side — USB sound cards) === \` \
+  -m USB_AUDIO \
+  \`# === USB Printer (host side — connect to USB printer) === \` \
+  -m USB_PRINTER
+ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
+fi  # end NH_FEATURES_USB
+
+# Batch 7 — USB Gadget extras: MTP / PTP / UVC / Printer (gadget side).
+# DELIBERATELY skipping RNDIS / ECM / EEM — those overlap with Qualcomm
+# USB_F_GSI hardware-accelerated network gadget framework and may cause
+# init.usb.rc conflicts at boot (catch-22 from earlier session).
+# MTP/PTP/UVC/PRINTER are safe — non-network, no GSI overlap, all ABI-clean.
+if [ "\${NH_FEATURES_GADGET:-1}" = "1" ]; then
+echo "[*] NH_FEATURES_GADGET=1 — Batch 7: USB gadget MTP/PTP/UVC/PRINTER"
+./scripts/config --file out/.config \
+  \`# === MTP / PTP gadget (DriveDroid-style file emulation) === \` \
+  -e USB_CONFIGFS_F_MTP -e USB_CONFIGFS_F_PTP \
+  \`# === UVC gadget (webcam emulation — phone pretends to be USB cam) === \` \
+  -e USB_CONFIGFS_F_UVC \
+  \`# === Printer gadget (less common but cheap to include) === \` \
+  -e USB_CONFIGFS_F_PRINTER
+ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
+fi  # end NH_FEATURES_GADGET
+
+# Batch 8 — USB Ethernet gadget (RNDIS / ECM).
+# RISKY — these may conflict with Qualcomm USB_F_GSI hardware-accelerated
+# network gadget framework. If phone fails to boot after this, set
+# NH_FEATURES_GADGET_NET=0 and rebuild. nh-logcatd will auto-freeze incident
+# snapshot if vendor stack breaks. Old boot.img is in output/ for rollback.
+if [ "\${NH_FEATURES_GADGET_NET:-1}" = "1" ]; then
+echo "[*] NH_FEATURES_GADGET_NET=1 — Batch 8 (RISKY): USB gadget RNDIS + ECM + EEM"
+./scripts/config --file out/.config \
+  \`# === RNDIS gadget (Windows USB-Ethernet — main MITM vector) === \` \
+  -e USB_CONFIGFS_RNDIS \
+  \`# === ECM gadget (Linux/macOS USB-Ethernet) === \` \
+  -e USB_CONFIGFS_ECM \
+  \`# === EEM gadget (Ethernet Emulation Model — fallback) === \` \
+  -e USB_CONFIGFS_EEM
+ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
+fi  # end NH_FEATURES_GADGET_NET
+
 # DEBUG-KERNEL knobs (set DEBUG_KERNEL=1 env to enable). MINIMAL set —
 # only what's needed to make ramoops save panic stacktraces.
 # Lessons from a previous attempt: KALLSYMS_ALL + DEBUG_KERNEL + DEBUG_BUGVERBOSE
@@ -149,6 +278,10 @@ for f in ARM64 ARCH_LAHAINA COMPAT EXFAT_FS CFI_CLANG CFI_CLANG_SHADOW LTO_CLANG
          WLAN_VENDOR_REALTEK ATH9K_HTC \
          HID USB_F_HID USB_F_MASS_STORAGE USB_F_GSI \
          NFS_FS NFSD USBIP_CORE USBIP_VHCI_HCD PACKET_DIAG \
+         WIREGUARD USB_RTL8152 USB_NET_AX88179_178A \
+         USB_NET_CDC_NCM USB_NET_CDC_MBIM USB_WDM \
+         NETFILTER_NETLINK_QUEUE NETFILTER_NETLINK_ACCT \
+         NTFS_FS CIFS PPTP L2TP L2TP_V3 PPP_MULTILINK NET_CLS_BPF \
          BPF_JIT_DEFAULT_ON LOCALVERSION; do
   v=\$(grep "^CONFIG_\${f}=" out/.config | head -1)
   [ -z "\$v" ] && v=\$(grep "^# CONFIG_\${f} is not set" out/.config | head -1)

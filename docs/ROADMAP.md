@@ -230,6 +230,79 @@ For reference:
 
 ---
 
+---
+
+## Windows LAN pentest — specifics
+
+The realistic deployment target for this build is "phone in someone's Windows-heavy office network, attacking AD". Audit on this axis:
+
+### ✅ Kernel-side already strong
+
+```
+CONFIG_CIFS=m                        SMB client
+CONFIG_CIFS_UPCALL=y                 Kerberos / NTLM credentials via keyring
+CONFIG_CIFS_DFS_UPCALL=y             DFS namespace traversal
+CONFIG_CIFS_POSIX=y, CIFS_XATTR=y    POSIX + xattr extensions
+CONFIG_CIFS_ALLOW_INSECURE_LEGACY=y  SMB1 enabled (for legacy XP/2003 in corp nets)
+CONFIG_NF_CONNTRACK_NETBIOS_NS=y     NetBIOS Name Service connection tracking
+CONFIG_KEYS=y                        kernel keyring (cifs.upcall + krb5)
+CONFIG_PPP_MPPE=y                    Microsoft PPP encryption
+CONFIG_IPV6=y + IP6_NF_IPTABLES=y    mitm6 attack path
+CONFIG_USB_CONFIGFS_F_HID=y          BadUSB → keyboard injection on Windows
+CONFIG_USB_CONFIGFS_MASS_STORAGE=y   DriveDroid USB spoof
+CONFIG_USB_CONFIGFS_RNDIS=y          Phone-as-USB-Ethernet on Windows (instant MITM)
+TPROXY full stack                    ntlmrelayx, Responder transparent redirect
+```
+
+The CIFS client is exceptionally well-configured — **SMB1 explicitly allowed** — covering legacy targets that modern distros disable by default.
+
+### 🟡 Minor kernel gaps for Win-LAN
+
+| Flag | Impact |
+|------|--------|
+| `IP6_NF_NAT, IP6_NF_TARGET_MASQUERADE` | No IPv6 NAT — mitm6 usually works without it (RA spoof on same L2), but SNAT/DNAT-over-IPv6 not possible |
+| `KEYS_REQUEST_CACHE, BIG_KEYS, PERSISTENT_KEYRINGS` | Large Kerberos tickets / persistent caches across processes |
+| `SOCK_DIAG` | `ss` tool limited socket introspection |
+| `NETFILTER_XT_MATCH_DHCP` | No DHCP iptables match (workaround: `u32` + dport 67/68) |
+
+### ⏭ Userspace — the actual gap (we ship none of these)
+
+All Windows-AD tooling is userspace inside Kali chroot. We don't pre-install. User does `apt install` after `Chroot Manager → Update Chroot`. Top tools:
+
+- `responder` — LLMNR/NBT-NS/MDNS/WPAD poisoner (in default Kali)
+- `crackmapexec` / `netexec` (nxc) — universal AD enumeration + lateral movement
+- `impacket-*` — smbserver, ntlmrelayx, secretsdump, GetNPUsers, GetUserSPNs, wmiexec, psexec, atexec, dcomexec, lookupsid, rpcdump, rpcmap, ticketer, raiseChild, goldenPac
+- `bloodhound.py` — AD graph collection
+- `mitm6` — IPv6 RA spoof + DHCPv6 → NTLM relay
+- `evil-winrm` — Windows Remote Management
+- `enum4linux-ng` — SMB/RPC enumeration
+- `kerbrute` (pip) — Kerberos pre-auth user enumeration / spraying
+- `certipy` (pip) — AD CS abuse
+- `bloodyAD` — AD object manipulation
+- `PetitPotam` / `DFSCoerce` / `ShadowCoerce` — coercion attacks (manual python)
+- `printerbug.py` — MS-RPRN coercion
+
+### 🟡 What we *could* add specifically for Windows-LAN
+
+These would land as Magisk modules or NetHunter app preset content — no kernel rebuild:
+
+1. **Pre-pulled Kali pentest packages** — chroot-init hook that runs `apt install -y responder crackmapexec mitm6 bloodhound.py evil-winrm impacket-scripts enum4linux-ng` on first chroot creation. Saves 10-15 min of "wait for download" for every new install.
+2. **HID payload library for Win10/11** — curated DuckHunter scripts covering: PowerShell one-liner reverse shell, AMSI patch, Defender bypass, UAC bypass via fodhelper / computerdefaults, scheduled-task persistence, mimikatz dropper.
+3. **Mass Storage payload pack for DriveDroid** — pre-cached `.iso` / `.img` for Hiren's BootCD, Sergei Strelec WinPE, Kali Live, Win10 install ISO + autorun.cmd templates.
+4. **NetHunter Custom Commands library** for AD scenarios:
+   - "Responder 30min, dump hashes to /sdcard/loot/"
+   - "mitm6 + ntlmrelayx targeting domain controller"
+   - "BadUSB: Win10 PS reverse shell to <listener IP>"
+   - "Coerce + relay PetitPotam → AD CS template"
+5. **`nh-pentest-presets` Magisk module** — drops curated config templates into `/system/etc/nethunter-presets/`: `responder-corp.conf` (full poisoning), `responder-stealth.conf` (LLMNR-only), `ntlmrelayx-targets.json`, `mitm6-allowlist.txt`.
+6. **Magisk module: `responder-autostart`** — when a specific SSID is connected, optionally auto-launch Responder with logging to /sdcard/responder-loot/. Trigger via NetHunter NhTrigger or Tasker integration.
+
+### Bottom line for Win-LAN
+
+Kernel side is solid and ready out-of-the-box for the standard SMB / NTLM-relay / mitm6 / BadUSB workflow. The real work is userspace — pre-installation of impacket+responder+crackmapexec, plus curated payload libraries. None of that is bundled today, but all of it is additive (Magisk modules + chroot-init hooks), no kernel rebuild needed for v1.1.
+
+---
+
 ## Recommendation for v1.1 scope
 
 If we cut a v1.1 next month, the cheapest-yet-impactful set is:

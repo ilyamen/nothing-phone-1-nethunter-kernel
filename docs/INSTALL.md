@@ -42,55 +42,72 @@ fastboot flashing unlock
 
 ### 0.2 — Install LineageOS 23.2
 
-Follow the [official LineageOS install guide](https://wiki.lineageos.org/devices/spacewar/install). Summary:
+Follow the [official LineageOS install guide](https://wiki.lineageos.org/devices/spacewar/install). Phone (1) uses **A/B partitions + dynamic super-partition**, so the install procedure flashes individual partition images, not a recovery zip.
+
+Download from [the spacewar build page](https://download.lineageos.org/d2x):
+- `lineage-23.2-YYYYMMDD-nightly-Spacewar-signed.zip` (~700 MB-1.3 GB, the ROM)
+- `boot.img`
+- `dtbo.img`
+- `super_empty.img`
+- `vbmeta.img`
+- `vendor_boot.img`
+
+Put all 6 files in one folder on your PC. Then:
 
 ```bash
-# Download lineage-23.2-XXXXX-nightly-spacewar-signed.zip
-# Download lineage-23.2-...-recovery-spacewar.img
+# Phone is already at fastboot prompt from step 0.1.
+# Flash the static partitions (boot is implicit-slot — fastboot picks the
+# inactive slot automatically, then sets it active on next reboot):
+fastboot flash boot         boot.img
+fastboot flash dtbo         dtbo.img
+fastboot flash vendor_boot  vendor_boot.img
+fastboot flash --disable-verity --disable-verification vbmeta vbmeta.img
 
-# Boot LOS recovery
-fastboot flash boot_a lineage-23.2-...-recovery-spacewar.img
-fastboot flash boot_b lineage-23.2-...-recovery-spacewar.img
+# Reset the dynamic super partition (where /system, /vendor, /product etc. live)
+fastboot wipe-super super_empty.img
+
+# Boot into recovery (recovery is bundled inside boot.img — there is no
+# separate recovery partition on this device)
 fastboot reboot recovery
-
-# In recovery: Apply update → Apply from ADB
-adb sideload lineage-23.2-XXXXX-nightly-spacewar-signed.zip
-
-# Reboot
-# Complete first-boot setup (skip Google sign-in for cleanliness if you want)
 ```
+
+On the phone, navigate the recovery menu:
+- **Factory reset → Format data / factory reset** (yes, format), reboot back into recovery
+- **Apply update → Apply from ADB**
+
+On your PC:
+```bash
+adb sideload lineage-23.2-YYYYMMDD-nightly-Spacewar-signed.zip
+# This takes ~3-5 min for the 1.3 GB sideload
+```
+
+When done, recovery returns to its main menu. Tap **System → Reboot system now**. Phone boots into stock LOS. Complete first-time setup (skip Google sign-in if you want a clean device).
 
 ### 0.3 — Install Magisk root
 
+The boot.img we want to patch is the LOS one we just flashed. Easiest source: extract it from the LOS zip we already have (it's `boot.img` inside the zip's `images/` directory) — but we already have it standalone from step 0.2 above. Use that.
+
 ```bash
-# Pull stock LOS boot.img for Magisk to patch
+# 1. Install Magisk app
+adb install Magisk-v30.X.apk
+
+# 2. Push the LOS boot.img we already have on PC to phone:
+adb push boot.img /sdcard/Download/
+
+# 3. On phone — open Magisk app:
+#    - Tap "Install" (next to "Magisk" version)
+#    - Select method: "Select and Patch a File"
+#    - Pick /sdcard/Download/boot.img (the LOS boot we just pushed)
+#    - Wait — Magisk creates magisk_patched-RANDOM.img in /sdcard/Download/
+
+# 4. Pull the patched image and flash:
+adb pull /sdcard/Download/magisk_patched-XXXXX.img   # name has a random suffix
 adb reboot bootloader
-fastboot getvar current-slot   # remember which slot you're on (a or b)
-# Boot recovery temporarily (does not flash anything):
-fastboot boot lineage-23.2-...-recovery-spacewar.img
-# In recovery: ADB sideload, but we need the boot.img to patch.
-# Easier path:
-fastboot reboot
-# Now boot regular LOS, then:
-
-adb push Magisk-v30.x.apk /sdcard/Download/
-adb install /sdcard/Download/Magisk-v30.x.apk
-
-# Open Magisk app on phone:
-#   - Tap "Install" → "Select and Patch a File"
-#   - Pick the LOS boot.img (you can extract it from the LOS zip:
-#     unzip lineage-23.2-XXX.zip 'images/boot.img' -d /tmp/los/)
-# Magisk creates magisk_patched-XXX.img on /sdcard/Download/
-
-adb pull /sdcard/Download/magisk_patched-XXX.img
-adb reboot bootloader
-fastboot flash boot_a magisk_patched-XXX.img
-# Also slot b for safety:
-fastboot flash boot_b magisk_patched-XXX.img
+fastboot flash boot magisk_patched-XXXXX.img
 fastboot reboot
 ```
 
-After reboot, open the Magisk app — it should show "Installed (vXX.X)" and your phone is rooted.
+After reboot, open the Magisk app — it should now show "Installed (vXX.X)" with a Magisk version number, not "Not installed". Your phone is rooted.
 
 ---
 

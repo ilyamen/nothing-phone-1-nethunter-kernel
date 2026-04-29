@@ -57,9 +57,14 @@ chmod 644 "$LOGDIR/boot-history/dmesg-${STAMP}.log" 2>/dev/null
 # is normal (every boot writes a marker via /dev/pmsg0). Pstore data with
 # dmesg-ramoops or console-ramoops indicates an actual kernel oops/panic.
 if [ "$PSTORE_HAD_DATA" = "1" ]; then
-  # Suppress incident creation if only pmsg present (= normal boot marker, not a panic)
+  # v3.2 fix: ONLY dmesg-ramoops indicates a real panic/oops.
+  # console-ramoops is written every boot (boot console history), not just on
+  # panic. ftrace-ramoops likewise written every boot if FTRACE is active.
+  # pmsg-ramoops is our own boot marker. v3.0 incident filter mis-classified
+  # all 4 boot-history captures as "panic" — verified empirically by 4 false
+  # positives over a single day's iter testing.
   case "$PSTORE_TYPES" in
-    *dmesg*|*console*|*ftrace*)
+    *dmesg*)
       INC="$LOGDIR/incidents/panic-${STAMP}"
       mkdir -p "$INC"
       echo "Incident: kernel panic/oops detected via pstore at boot ${STAMP}" > "$INC/REASON.txt"

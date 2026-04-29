@@ -1,4 +1,4 @@
-# NetHunter Kernel — Roadmap (post-v1.0.0)
+# NetHunter Kernel — Roadmap
 
 What didn't make v1.0.0, ranked by impact for the typical Wi-Fi/LAN-pentest workflow on this device. Status verified against the live kernel config (`/proc/config.gz`) shipped in v1.0.0.
 
@@ -7,6 +7,42 @@ Legend:
 - 🟡 missing, can be enabled in next image
 - ⏭ userspace / Magisk module work — no kernel rebuild needed
 - ✅ already in v1.0.0 (listed for completeness when category mixes)
+
+---
+
+## Release status
+
+| Version | Date | Highlights | Status |
+|---------|------|-----------|--------|
+| v1.0.0 | 2026-04-28 | First public release. 14 Kali QCACLD-3.0 patches, 9 Magisk modules, full NetHunter feature set, internal Wi-Fi monitor mode (claimed end-to-end — but see v1.1.0 caveat) | ✅ Released |
+| v1.1.0 | 2026-04-29 | **FULL_MON for Yupik (WCN6855)**: 3-line patch (`CONFIG_QCA_SUPPORT_FULL_MON := y` + `dp_config_full_mon_mode()` call). Restored full management-frame RX (18 → 629 beacons / 27s, EAPOL captured naturally without deauth). | ✅ Released |
+| v1.1.1 | 2026-04-29 | **Debug visibility**: `LOG_BUF_SHIFT=19` (4× printk ring), `PRINTK_TIME` (timestamps), 4× larger pstore (`record_size=2M`, `console_size=512K`, `ftrace_size=1M`, `pmsg_size=512K`). nh-logcatd → v3.1 (Magisk ecosystem snapshot + SELinux AVC denials watcher). | ✅ Released |
+| v1.1.2 | TBD | **`log_buf_len=524288` CMDLINE override** (fixes bootloader's 256K override of our LOG_BUF_SHIFT=19). nh-logcatd → v3.2 (panic-incident filter fix: only `dmesg-ramoops` triggers, not `console-ramoops`). | 🚧 in progress |
+
+## ABI fragility lessons learned
+
+This kernel uses prebuilt vendor `.ko` modules from `/vendor/lib/modules/` (Qualcomm/LineageOS-built). They are linked against running stock LOS kernel exports. Any `CONFIG_*` we enable that adds a `#ifdef`-gated field to an exported struct breaks `MODVERSIONS` CRC matching → vendor stack dies (sensors / wlan / audio dead, no statusbar icons, ADBd doesn't start).
+
+Verified empirically across 4 v1.1.1 build iterations:
+
+| Config | ABI impact | Verdict |
+|--------|------------|---------|
+| `DETECT_HUNG_TASK` | adds `last_switch_count`+`last_switch_time` to `task_struct` (sched.h:1457-1460) → CRC of every export taking `task_struct *` changes | 🔴 BREAKS |
+| `FUNCTION_TRACER` / `TRACING` | task_struct +trace+trace_recursion (sched.h:2649) + struct module changes | 🔴 BREAKS |
+| `LOCKDEP` / `PROVE_LOCKING` | adds `lockdep_map` to many exported structs | 🔴 BREAKS |
+| `DEBUG_PREEMPT` / `DEBUG_MUTEXES` / `DEBUG_SPINLOCK` | changes CRCs of `mutex_lock`, `spin_lock`, etc. | 🔴 BREAKS |
+| `DEBUG_FS` + `DYNAMIC_DEBUG` together | dynamic_debug macros via headers may touch some exported function CRCs | 🔴 BREAKS (combined) |
+| `KASAN` | incompatible with `CFI_CLANG=y` | 🔴 BREAKS |
+| `KFENCE` | not in 5.4 (added 5.12) | N/A |
+| `SOFTLOCKUP_DETECTOR` | only percpu vars in `kernel/watchdog.c` | 🟢 SAFE (per source review, not bisected on physical device) |
+| `WQ_WATCHDOG` | unconditional field in `struct worker_pool` (defined in `.c`, not exported) | 🟢 SAFE (per source review, not bisected on physical device) |
+| `LOG_BUF_SHIFT=19` | sizeof of internal static buffer | 🟢 SAFE |
+| `PRINTK_TIME` | runtime sysctl `printk.time` | 🟢 SAFE |
+| `CMDLINE_EXTEND` + custom CMDLINE | boot-arg parsing only | 🟢 SAFE |
+
+Currently enabled in v1.1.1: only the 3 confirmed-safe-on-this-build flags (`LOG_BUF_SHIFT=19`, `PRINTK_TIME`, `CMDLINE_EXTEND`). The "per source review" SAFE flags (`SOFTLOCKUP`, `WQ_WATCHDOG`) were tested *together with* the BREAKS flags in the same build, so we couldn't isolate which specific flag broke vendor — left them off pending future bisect work.
+
+**Path to enabling more debug:** rebuild `qca_cld3_qca6750.ko` and other vendor `.ko`s from source (kernel-fork has `drivers/staging/qcacld-3.0/` source tree) so that vendor modules and our kernel share the same Module.symvers. Estimated effort: 1-2 weeks (parallel to monitoring infrastructure rollout).
 
 ---
 

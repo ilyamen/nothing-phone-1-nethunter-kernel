@@ -1,6 +1,6 @@
 id=nh-logcatd
-name=NetHunter Logcat Daemon v3.1 (Magisk ecosystem + SELinux observability)
-version=v3.1
-versionCode=31
+name=NetHunter Logcat Daemon v3.2 (false-positive incident fix + denial spam filter)
+version=v3.2
+versionCode=32
 author=ilyamen
-description=12-layer logging for v1.1.1 kernel. Logcat 128MB rotating, 30s dmesg snapshots, all pstore types (dmesg/console/ftrace/pmsg-ramoops), AUTO-FREEZE panic incidents, boot history (50 boots), boot marker via /dev/pmsg0, Magisk daemon log + per-module status snapshot at every boot (module versions, disable/remove flags, post-fs/service.d scripts), SELinux AVC denials watcher (60s polling). Storage budget cap 600MB. Run `nh-collect-logs.sh` to bundle.
+description=12-layer logging for v1.1.1 kernel. v3.2 fixes: (1) panic incident now triggers ONLY on dmesg-ramoops (real oops), not on every console-ramoops at boot; (2) SELinux watcher excludes shell→shell netlink spam from manual `ip link` runs; (3) removed stale --zygisk CLI call. Logcat 128MB rotating, 30s dmesg snapshots, all pstore types (dmesg/console/ftrace/pmsg-ramoops), AUTO-FREEZE real panic incidents (last 5), boot history (50 boots), boot marker via /dev/pmsg0, Magisk per-module status snapshot every boot, SELinux AVC denials watcher (60s polling). Storage cap 600MB.

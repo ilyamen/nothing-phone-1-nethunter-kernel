@@ -341,7 +341,11 @@ ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
 # write via /dev/pmsg0 — nh-logcatd uses this). panic_print=15 dumps tasks +
 # memmem + timers + locks at panic.
 ./scripts/config --file out/.config --set-str CMDLINE \
-  "cgroup_disable=pressure ramoops.record_size=2097152 ramoops.console_size=524288 ramoops.ftrace_size=1048576 ramoops.pmsg_size=524288 panic_print=15"
+  "cgroup_disable=pressure ramoops.record_size=2097152 ramoops.console_size=524288 ramoops.ftrace_size=1048576 ramoops.pmsg_size=524288 panic_print=15 log_buf_len=524288"
+# log_buf_len=524288 — overrides the bootloader's 'log_buf_len=256K' which would
+# otherwise truncate our CONFIG_LOG_BUF_SHIFT=19 (512KB) intent down to 256KB.
+# Verified empirically v1.1.1 build: /proc/cmdline showed 'log_buf_len=256K'
+# inherited from bootloader, defeating our config.
 fi  # end NH_FEATURES_DETECTORS
 
 # DEBUG_KERNEL (legacy env flag, kept for backward-compat). Was used to gate

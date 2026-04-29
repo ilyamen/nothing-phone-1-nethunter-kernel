@@ -53,8 +53,12 @@ nohup sh -c '
 mkdir -p "$LOGDIR" 2>/dev/null
 nohup sh -c '
   while true; do
+    # v3.2 filter: exclude shell→shell netlink_route denials — those are spam
+    # from manual `ip link …` runs in adb shell, not real module issues. Real
+    # AVC violations are from system services or modules, not user shell.
     /system/bin/dmesg 2>/dev/null \
       | grep -E "type=1400|avc:[[:space:]]+denied|audit:[[:space:]]+type=1400" \
+      | grep -v "scontext=u:r:shell:s0 tcontext=u:r:shell:s0 tclass=netlink_route_socket" \
       | tail -200 > "/data/local/log/selinux-denials.log"
     chmod 644 "/data/local/log/selinux-denials.log" 2>/dev/null
     sleep 60

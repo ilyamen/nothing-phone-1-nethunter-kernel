@@ -74,9 +74,6 @@ mkdir -p "$STAGE/live/magisk-now"
   echo ""
   echo "=== denylist ==="
   magisk --denylist ls 2>&1 | head
-  echo ""
-  echo "=== zygisk status ==="
-  magisk --zygisk 2>&1 | head -2
 } > "$STAGE/live/magisk-now/state.txt" 2>&1
 [ -f /cache/magisk.log ]    && tail -300 /cache/magisk.log    > "$STAGE/live/magisk-now/cache-magisk.log" 2>/dev/null
 [ -f /data/adb/magisk.log ] && tail -300 /data/adb/magisk.log > "$STAGE/live/magisk-now/data-magisk.log" 2>/dev/null

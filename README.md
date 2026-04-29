@@ -40,9 +40,11 @@ scripts/09-build-magisk-modules.sh   # Packs all 8 Magisk module zips
 
 To make a GitHub release after building:
 ```bash
-git tag -a v1.0.0 -m 'Release v1.0.0'
-scripts/10-make-release.sh v1.0.0
+git tag -a v1.1.2 -m 'Release v1.1.2'
+scripts/10-make-release.sh v1.1.2
 ```
+
+Released versions: v1.0.0 (initial), v1.1.0 (FULL_MON internal Wi-Fi RX), v1.1.1 (debug visibility), v1.1.2 (bugfix sweep). See [CHANGELOG.md](CHANGELOG.md) for full history.
 
 Full build documentation in [docs/BUILD.md](docs/BUILD.md). Bug catalogue from initial development in [docs/BUILD-LOG-2026-04-26.md](docs/BUILD-LOG-2026-04-26.md).
 

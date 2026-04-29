@@ -1,6 +1,6 @@
 id=nh-logcatd
-name=NetHunter Logcat Daemon v2 (persistent + auto-incident)
-version=v2.0
-versionCode=2
+name=NetHunter Logcat Daemon v3 (extended forensics for v1.1.1 kernel)
+version=v3.0
+versionCode=3
 author=ilyamen
-description=8-layer logging — persistent logcat 64MB rotating, hourly dmesg, pstore grab on boot, AUTO-FREEZE panic incidents (last 5 kept forever), boot history (50 boots), module logs, storage budget cap 400MB. Run `nh-collect-logs.sh` to tarball into /sdcard/Download or /data/local/tmp.
+description=10-layer logging tuned for v1.1.1 kernel (4x bigger ramoops + 4x bigger printk ring 512KB + dmesg timestamps). Persistent logcat 128MB rotating (up from 64MB), 30s dmesg snapshots full 512KB each, all pstore types grabbed (dmesg-/console-/ftrace-/pmsg-ramoops), AUTO-FREEZE panic incidents (last 5 kept forever), boot history (50 boots), boot marker via /dev/pmsg0 (survives panic), module logs, storage budget cap 600MB. Run `nh-collect-logs.sh` to tarball into /sdcard/Download.

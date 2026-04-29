@@ -41,6 +41,49 @@ lsmod > "$STAGE/live/lsmod.txt" 2>/dev/null
 uname -a > "$STAGE/live/uname.txt" 2>/dev/null
 getprop > "$STAGE/live/getprop.txt" 2>/dev/null
 
+# v3: pstore live snapshot (NOT cleared — kernel will clear on next boot grab).
+# Useful when collecting logs WHILE the issue is fresh, before next reboot.
+mkdir -p "$STAGE/live/pstore-live"
+if [ -d /sys/fs/pstore ]; then
+  for f in /sys/fs/pstore/*; do
+    [ -e "$f" ] || continue
+    cp "$f" "$STAGE/live/pstore-live/" 2>/dev/null
+  done
+fi
+
+# v3: kernel runtime state — useful for diagnosing wifi/sensor weirdness
+{
+  echo "=== /proc/cmdline ==="
+  cat /proc/cmdline 2>/dev/null
+  echo ""
+  echo "=== printk levels (current,default,min,boot) ==="
+  cat /proc/sys/kernel/printk 2>/dev/null
+  echo ""
+  echo "=== ramoops cmdline (verifies kernel built with v1.1.1 features) ==="
+  grep -oE "ramoops\.[a-z_]+=[0-9]+" /proc/cmdline 2>/dev/null
+  echo ""
+  echo "=== /proc/version ==="
+  cat /proc/version 2>/dev/null
+  echo ""
+  echo "=== /sys/module/wlan/parameters ==="
+  for p in con_mode con_mode_ftm fwpath country_code timer_multiplier qdf_log_dump_at_kernel_enable; do
+    val=$(cat "/sys/module/wlan/parameters/$p" 2>/dev/null)
+    echo "  $p = $val"
+  done
+  echo ""
+  echo "=== ip link (network interfaces) ==="
+  ip link show 2>/dev/null
+  echo ""
+  echo "=== /proc/interrupts (top 30 by line — check IRQ pressure) ==="
+  cat /proc/interrupts 2>/dev/null | head -30
+  echo ""
+  echo "=== /proc/meminfo (top) ==="
+  head -10 /proc/meminfo 2>/dev/null
+  echo ""
+  echo "=== uptime + load ==="
+  uptime 2>/dev/null
+} > "$STAGE/live/kernel-runtime-state.txt" 2>&1
+
 # Pack
 cd /data/local/tmp
 tar czf "$OUT" -C nh-logs-stage . 2>/dev/null

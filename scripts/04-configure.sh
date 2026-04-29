@@ -252,19 +252,106 @@ echo "[*] NH_FEATURES_GADGET_NET=1 — Batch 8 (RISKY): USB gadget RNDIS + ECM +
 ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
 fi  # end NH_FEATURES_GADGET_NET
 
-# DEBUG-KERNEL knobs (set DEBUG_KERNEL=1 env to enable). MINIMAL set —
-# only what's needed to make ramoops save panic stacktraces.
-# Lessons from a previous attempt: KALLSYMS_ALL + DEBUG_KERNEL + DEBUG_BUGVERBOSE
-# caused LineageOS 23.2 vendor modules (sensors, audio, network indicators)
-# to fail to load. Keep config minimal. ramoops.record_size override comes
-# via kernel CMDLINE since this device's DT does not declare it.
-if [ "\${DEBUG_KERNEL:-0}" = "1" ]; then
-  echo "[*] DEBUG_KERNEL=1 — enabling minimal debug knobs"
-  ./scripts/config --file out/.config \
-    -e PRINTK_TIME \
-    -e CMDLINE_EXTEND
+# Batch 9 — Production-safe debug visibility (always on, <1% overhead).
+# Goal: see kernel issues BEFORE they become panic — v1.0.0/v1.1.0 had
+# essentially post-mortem only debug (PSTORE + DEBUG_BUGVERBOSE).
+#
+# History (lessons from v1.1.1 first attempts):
+#  • Iteration 1 with DETECT_HUNG_TASK + SOFTLOCKUP + WQ_WATCHDOG broke vendor
+#    stack (sensors dead, no statusbar icons, ADBd doesn't start).
+#  • Iteration 2 (only WQ_WATCHDOG removed) STILL broke. WQ_WATCHDOG was wrongly
+#    accused — it's actually ABI-safe (worker_pool is defined in .c, not exported).
+#  • Iteration 3 (this) — the real culprit is DETECT_HUNG_TASK.
+#
+# WHY DETECT_HUNG_TASK breaks ABI:
+#   include/linux/sched.h v5.4 lines 1457-1460:
+#     #ifdef CONFIG_DETECT_HUNG_TASK
+#         unsigned long  last_switch_count;
+#         unsigned long  last_switch_time;
+#     #endif
+#   This adds +16 bytes to task_struct. EXPORT_SYMBOL functions taking
+#   `task_struct *` (wake_up_process, kthread_stop, get_task_struct, etc.)
+#   change CRC under MODVERSIONS=y. Prebuilt vendor modules (qca_cld3_qca6750.ko,
+#   sensors, audio, icnss2) fail modversions check → load fail → vendor stack
+#   dead → phone boots but UI is dysfunctional and ADB doesn't come up.
+#
+# Same logic permanently excludes:
+#  • DETECT_HUNG_TASK    — task_struct +16 bytes (sched.h:1457)
+#  • FUNCTION_TRACER     — pulls TRACING which adds task_struct fields
+#  • TRACING             — task_struct +trace,trace_recursion (sched.h:2649)
+#  • FUNCTION_GRAPH_TRACER — task_struct +5 fields (sched.h:2626-2647)
+#  • FTRACE_SYSCALLS     — typically pulls TRACING
+#  • LIVEPATCH           — struct module
+#  • BPF_EVENTS          — struct module
+#  • DEBUG_PREEMPT/MUTEXES/SPINLOCK/RT_MUTEXES/RWSEMS — change mutex_lock,
+#    spin_lock CRCs (heavy widespread vendor use)
+#  • LOCKDEP / PROVE_LOCKING — adds lockdep_map to many structs, heavy CPU
+#  • KASAN — incompatible with CFI_CLANG (this kernel uses CFI)
+#  • KFENCE — added in kernel 5.12; this kernel is 5.4
+#
+# What's safe (verified by source diff against Linux 5.4 headers):
+#  • SOFTLOCKUP_DETECTOR — only percpu vars in watchdog.c
+#  • HARDLOCKUP_DETECTOR — only percpu vars
+#  • WQ_WATCHDOG — only adds field to struct worker_pool which is defined
+#    in workqueue.c (not exported, vendor modules don't see it)
+#  • SCHED_STACK_END_CHECK — runtime check in __schedule(), no struct change
+#  • DEBUG_NOTIFIERS — only pr_warn() calls, no struct change
+#  • DEBUG_FS — debugfs filesystem, no exported struct touched
+#  • DYNAMIC_DEBUG (full) — struct _ddebug identical to CORE-only version,
+#    only difference is registration call-sites in modules
+#  • LOG_BUF_SHIFT — sizeof(__log_buf) constant, not exported
+#  • PRINTK_TIME, CMDLINE_EXTEND — runtime behavior only
+#
+# Set NH_FEATURES_DETECTORS=0 to skip.
+#
+# ITERATION 3 LOG (2026-04-29): even with DETECT_HUNG_TASK explicitly off, full
+# set (SOFTLOCKUP+HARDLOCKUP+WQ_WATCHDOG+SCHED_STACK_END_CHECK+DEBUG_NOTIFIERS+
+# DEBUG_FS+DYNAMIC_DEBUG+PRINTK_TIME+LOG_BUF_SHIFT=19) STILL broke vendor stack.
+# At least one of those flags pulls a struct change that propagates to vendor
+# ABI. Without per-flag binary-search, we can't isolate the culprit cheaply.
+#
+# CONSERVATIVE FALLBACK: enable only the 4 flags that mathematically CANNOT
+# change exported struct CRCs:
+#   • LOG_BUF_SHIFT=19   — sizeof of an internal static buffer; not exported
+#   • PRINTK_TIME        — runtime sysctl printk.time; runtime-only behavior
+#   • CMDLINE_EXTEND     — Kconfig that affects boot-arg parsing; not ABI
+#   • CMDLINE (string)   — kernel command line tokens; runtime-only
+#
+# This still gives users:
+#   • 4× larger printk ring (128KB → 512KB) — visible via `dmesg`
+#   • Timestamps on every line of dmesg
+#   • 4× larger ramoops region — full panic forensics persisted
+#   • Userspace-writable pmsg ring (used by nh-logcatd)
+#
+# Future debug detector rollout requires per-flag rebuild-and-test cycle.
+if [ "\${NH_FEATURES_DETECTORS:-1}" = "1" ]; then
+echo "[*] NH_FEATURES_DETECTORS=1 — Batch 9: 512KB log_buf + timestamps + extended ramoops"
+./scripts/config --file out/.config \
+  \`# === PRINTK_TIME: dmesg timestamps on every line. Runtime sysctl. \` \
+  -e PRINTK_TIME \
+  \`# === LOG_BUF_SHIFT: 17 (128KB) → 19 (512KB). Multi-CPU panic fills 200+KB; \` \
+  \`#     with 512KB we capture full panic + preceding 1-2s activity. \` \
+  --set-val LOG_BUF_SHIFT 19 \
+  \`# === CMDLINE_EXTEND: append our CMDLINE to bootloader's, for ramoops. \` \
+  -e CMDLINE_EXTEND
+ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
+# CMDLINE separately (heredoc whitespace).
+# ramoops sizes: record_size 2MB (full multi-CPU oops), console_size 512KB
+# (boot console history), ftrace_size 1MB, pmsg_size 512KB (userspace can
+# write via /dev/pmsg0 — nh-logcatd uses this). panic_print=15 dumps tasks +
+# memmem + timers + locks at panic.
+./scripts/config --file out/.config --set-str CMDLINE \
+  "cgroup_disable=pressure ramoops.record_size=2097152 ramoops.console_size=524288 ramoops.ftrace_size=1048576 ramoops.pmsg_size=524288 panic_print=15"
+fi  # end NH_FEATURES_DETECTORS
+
+# DEBUG_KERNEL (legacy env flag, kept for backward-compat). Was used to gate
+# CMDLINE+PRINTK_TIME — now always-on via Batch 9. This block is now a no-op
+# unless NH_FEATURES_DETECTORS=0 (in which case it restores the v1.0.0 minimal
+# debug behavior).
+if [ "\${DEBUG_KERNEL:-0}" = "1" ] && [ "\${NH_FEATURES_DETECTORS:-1}" = "0" ]; then
+  echo "[*] DEBUG_KERNEL=1 (NH_FEATURES_DETECTORS=0 fallback) — minimal debug"
+  ./scripts/config --file out/.config -e PRINTK_TIME -e CMDLINE_EXTEND
   ARCH=arm64 PATH=\$PATH make O=out olddefconfig | tail -3
-  # Set CMDLINE separately to avoid heredoc whitespace issues
   ./scripts/config --file out/.config --set-str CMDLINE \
     "cgroup_disable=pressure ramoops.record_size=1048576 ramoops.ftrace_size=524288 panic_print=15"
 fi

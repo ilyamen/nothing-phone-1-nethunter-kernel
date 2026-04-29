@@ -204,16 +204,36 @@ For reference:
 - `MT7601U=m` — MediaTek N300
 - `RT2800USB=m` — Ralink RT3070/RT5370 (Alfa AWUS036NH)
 
-### ⚠️ KNOWN LIMITATION — internal Wi-Fi monitor mode
+### ✅ Internal Wi-Fi monitor mode — works via sysfs `con_mode`
 
-Internal Qualcomm WCN6855 in Nothing Phone (1) **does NOT support live switch to monitor mode** despite NetHunter QCACLD-3.0 patches. `iw phy phy0 info` shows `monitor` in supported interface modes, but `iw dev wlan0 set type monitor` returns `Operation not supported on transport endpoint (-95)` — firmware-level reject. Verified 2026-04-29.
+Internal Qualcomm WCN6855 monitor mode + frame injection **work end-to-end**, but **activation is NOT via `iw set type` / `airmon-ng`**. The Kali QCACLD-3.0 patches deliberately bypass standard `iw` and route mode switches through a sysfs module parameter (commit `7bf1f20`: "Asynchronous synchronization of Wi-Fi mode (STA/MONITOR), **bypassing iw commands**").
 
-What internal Wi-Fi *does* support:
-- ✅ Frame injection in managed mode (`aireplay-ng deauth` while associated to AP)
-- ❌ Full monitor mode capture (no go via `iw set type` or `airmon-ng start`)
-- ❌ Multi-interface monitor (`iw dev wlan0 interface add monX type monitor` → `-22`)
+**Correct activation:**
 
-**For monitor mode capture, use one of the external USB adapters** (auto-loaded by `realtek-wifi-cfi-fix` Magisk module): RTL8188EUS, RTL8812BU, RTL8821CU. These have isolated chips and work flawlessly in monitor mode.
+```sh
+svc wifi disable
+ip link set wlan0 down
+echo 4 > /sys/module/wlan/parameters/con_mode    # 4 = Monitor, 0 = STA
+ip link set wlan0 up
+iw dev wlan0 info | grep type                    # → type monitor ✓
+```
+
+**Wrong activation (what every Linux desktop tutorial says — DOES NOT WORK on QCACLD):**
+```sh
+iw dev wlan0 set type monitor      # → ENOTSUPP (-95). By design.
+airmon-ng start wlan0              # → tries to add new mon interface, fails -22.
+iw dev wlan0 interface add mon0 type monitor   # → -22.
+```
+
+What works on internal Wi-Fi after `con_mode=4`:
+- ✅ Full monitor mode capture (airodump-ng, tcpdump, etc.)
+- ✅ Frame injection (aireplay-ng deauth, packetforge-ng)
+- ✅ Channel hopping (`iw dev wlan0 set channel <N>` works in monitor mode)
+
+External USB adapters (RTL8188EUS / RTL8812BU / RTL8821CU via `realtek-wifi-cfi-fix` Magisk module) still useful when:
+- You want internal Wi-Fi to keep serving Android data connection while sniffing
+- Multiple simultaneous monitor interfaces needed
+- Higher TX power / external antenna desired
 
 **Wi-Fi USB out-of-tree (Magisk module `realtek-wifi-cfi-fix`):**
 - RTL8188EUS, RTL8812BU, RTL8821CU/8811CU

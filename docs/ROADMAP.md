@@ -206,7 +206,9 @@ For reference:
 
 ### ✅ Internal Wi-Fi monitor mode — works via sysfs `con_mode`
 
-Internal Qualcomm WCN6855 monitor mode + frame injection **work end-to-end**, but **activation is NOT via `iw set type` / `airmon-ng`**. The Kali QCACLD-3.0 patches deliberately bypass standard `iw` and route mode switches through a sysfs module parameter (commit `7bf1f20`: "Asynchronous synchronization of Wi-Fi mode (STA/MONITOR), **bypassing iw commands**").
+Internal Qualcomm WCN6855 monitor mode + frame injection + **full RX management frame capture** all **work end-to-end** as of **v1.1.0** (FULL_MON patch). Activation is **NOT via `iw set type` / `airmon-ng`**. The Kali QCACLD-3.0 patches deliberately bypass standard `iw` and route mode switches through a sysfs module parameter (commit `7bf1f20`: "Asynchronous synchronization of Wi-Fi mode (STA/MONITOR), **bypassing iw commands**").
+
+> **v1.0.0 caveat (resolved in v1.1.0):** monitor mode appeared to work but driver was silently dropping ~94% of management frames (only 18 beacons / 27s observed, 0 EAPOL after deauth). v1.1.0 enables `CONFIG_QCA_SUPPORT_FULL_MON` and wires `dp_config_full_mon_mode()` into `dp_soc_cfg_init()` for QCA6750 (Yupik) — restores full mgmt RX (629 beacons / 27s, EAPOL captured naturally without deauth). See [release-notes/v1.1.0.md](../release-notes/v1.1.0.md).
 
 **Correct activation:**
 

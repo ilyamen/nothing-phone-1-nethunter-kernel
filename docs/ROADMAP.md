@@ -204,6 +204,17 @@ For reference:
 - `MT7601U=m` — MediaTek N300
 - `RT2800USB=m` — Ralink RT3070/RT5370 (Alfa AWUS036NH)
 
+### ⚠️ KNOWN LIMITATION — internal Wi-Fi monitor mode
+
+Internal Qualcomm WCN6855 in Nothing Phone (1) **does NOT support live switch to monitor mode** despite NetHunter QCACLD-3.0 patches. `iw phy phy0 info` shows `monitor` in supported interface modes, but `iw dev wlan0 set type monitor` returns `Operation not supported on transport endpoint (-95)` — firmware-level reject. Verified 2026-04-29.
+
+What internal Wi-Fi *does* support:
+- ✅ Frame injection in managed mode (`aireplay-ng deauth` while associated to AP)
+- ❌ Full monitor mode capture (no go via `iw set type` or `airmon-ng start`)
+- ❌ Multi-interface monitor (`iw dev wlan0 interface add monX type monitor` → `-22`)
+
+**For monitor mode capture, use one of the external USB adapters** (auto-loaded by `realtek-wifi-cfi-fix` Magisk module): RTL8188EUS, RTL8812BU, RTL8821CU. These have isolated chips and work flawlessly in monitor mode.
+
 **Wi-Fi USB out-of-tree (Magisk module `realtek-wifi-cfi-fix`):**
 - RTL8188EUS, RTL8812BU, RTL8821CU/8811CU
 

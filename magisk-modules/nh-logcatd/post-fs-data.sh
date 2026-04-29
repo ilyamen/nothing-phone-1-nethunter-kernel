@@ -5,8 +5,10 @@
 # Runs at post-fs-data Magisk hook (before service.d).
 
 LOGDIR=/data/local/log
-mkdir -p "$LOGDIR/pstore" "$LOGDIR/boot-history" "$LOGDIR/nh-modules" "$LOGDIR/incidents" 2>/dev/null
-chmod 755 "$LOGDIR" "$LOGDIR/pstore" "$LOGDIR/boot-history" "$LOGDIR/nh-modules" "$LOGDIR/incidents" 2>/dev/null
+mkdir -p "$LOGDIR/pstore" "$LOGDIR/boot-history" "$LOGDIR/nh-modules" "$LOGDIR/incidents" \
+         "$LOGDIR/magisk-snapshots" 2>/dev/null
+chmod 755 "$LOGDIR" "$LOGDIR/pstore" "$LOGDIR/boot-history" "$LOGDIR/nh-modules" \
+          "$LOGDIR/incidents" "$LOGDIR/magisk-snapshots" 2>/dev/null
 
 STAMP=$(date +%Y%m%d-%H%M%S)
 PSTORE_HAD_DATA=0
@@ -84,6 +86,71 @@ ls -t "$LOGDIR/boot-history/" 2>/dev/null | tail -n +51 | while read old; do
 done
 # incidents: keep 5 (panic events are rare; this is plenty of history)
 ls -dt "$LOGDIR/incidents/"*/ 2>/dev/null | tail -n +6 | while read old; do
+  rm -rf "$old" 2>/dev/null
+done
+
+# === Layer J (v3.1): Magisk ecosystem snapshot ===
+# Captures the state of EVERY Magisk module at this boot — versions, disable/
+# remove/update flags, mount-skip flags, post-fs and service script presence.
+# This is critical for diagnosing "why isn't <module> working" weeks after the
+# fact: looking back at the snapshot from when the issue started lets you see
+# which modules were installed, disabled, or partially-broken at that boot.
+# Also captures Magisk daemon's own log so we can see SELinux issues, mount
+# failures, and policy violations that Magisk itself observed.
+SNAP="$LOGDIR/magisk-snapshots/${STAMP}"
+mkdir -p "$SNAP"
+{
+  echo "=== Magisk version ==="
+  magisk -V 2>&1
+  magisk -v 2>&1
+  echo ""
+  echo "=== /data/adb/modules listing ==="
+  ls -la /data/adb/modules/ 2>&1
+  echo ""
+  echo "=== Per-module state ==="
+  for d in /data/adb/modules/*/; do
+    [ -d "$d" ] || continue
+    name=$(basename "$d")
+    flags=""
+    [ -f "$d/disable" ]    && flags="${flags}DISABLED "
+    [ -f "$d/remove" ]     && flags="${flags}PENDING_REMOVE "
+    [ -f "$d/update" ]     && flags="${flags}UPDATED "
+    [ -f "$d/skip_mount" ] && flags="${flags}SKIP_MOUNT "
+    ver="?"
+    [ -f "$d/module.prop" ] && ver=$(grep "^version=" "$d/module.prop" | cut -d= -f2)
+    code="?"
+    [ -f "$d/module.prop" ] && code=$(grep "^versionCode=" "$d/module.prop" | cut -d= -f2)
+    has_post="-"
+    [ -f "$d/post-fs-data.sh" ] && has_post="post-fs"
+    has_svc="-"
+    [ -f "$d/service.sh" ] && has_svc="service"
+    has_late="-"
+    [ -f "$d/boot-completed.sh" ] && has_late="boot-completed"
+    echo "  $name | ver=$ver code=$code | $has_post $has_svc $has_late | $flags"
+  done
+  echo ""
+  echo "=== /data/adb/post-fs-data.d/ ==="
+  ls -la /data/adb/post-fs-data.d/ 2>&1
+  echo ""
+  echo "=== /data/adb/service.d/ ==="
+  ls -la /data/adb/service.d/ 2>&1
+  echo ""
+  echo "=== Magisk denylist ==="
+  magisk --denylist ls 2>&1 | head -30
+  echo ""
+  echo "=== /cache/magisk.log (last 100 lines) ==="
+  tail -100 /cache/magisk.log 2>&1
+  echo ""
+  echo "=== /data/adb/magisk.log (last 100 lines) ==="
+  tail -100 /data/adb/magisk.log 2>&1
+} > "$SNAP/magisk-state.txt" 2>&1
+
+# Also capture full magisk log files (raw, unfiltered)
+[ -f /cache/magisk.log ]      && cp /cache/magisk.log "$SNAP/cache-magisk.log" 2>/dev/null
+[ -f /data/adb/magisk.log ]   && cp /data/adb/magisk.log "$SNAP/data-adb-magisk.log" 2>/dev/null
+
+# Rotate magisk-snapshots: keep last 30 boots
+ls -dt "$LOGDIR/magisk-snapshots/"*/ 2>/dev/null | tail -n +31 | while read old; do
   rm -rf "$old" 2>/dev/null
 done
 

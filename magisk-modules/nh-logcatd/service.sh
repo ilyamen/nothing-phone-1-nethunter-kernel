@@ -44,7 +44,24 @@ nohup sh -c '
   done
 ' >/dev/null 2>&1 &
 
-# === Layer I (NEW v3): write boot marker to /dev/pmsg0 ===
+# === Layer K (NEW v3.1): SELinux AVC denials watcher ===
+# AVC = Access Vector Cache. When Magisk modules try to do something SELinux
+# blocks, kernel emits "type=1400 audit(...) avc: denied" lines in dmesg.
+# These are silent — modules just fail without obvious error message.
+# This watcher polls dmesg every 60s and persists denials to a dedicated log.
+# Useful for diagnosing "module installed but doesn't seem to do anything".
+mkdir -p "$LOGDIR" 2>/dev/null
+nohup sh -c '
+  while true; do
+    /system/bin/dmesg 2>/dev/null \
+      | grep -E "type=1400|avc:[[:space:]]+denied|audit:[[:space:]]+type=1400" \
+      | tail -200 > "/data/local/log/selinux-denials.log"
+    chmod 644 "/data/local/log/selinux-denials.log" 2>/dev/null
+    sleep 60
+  done
+' >/dev/null 2>&1 &
+
+# === Layer I (v3): write boot marker to /dev/pmsg0 ===
 # /dev/pmsg0 is the userspace half of pstore's pmsg-ramoops (512KB ring).
 # Whatever we write here survives kernel panic + reboot — kernel will dump
 # the ring to /sys/fs/pstore/pmsg-ramoops-0 on next boot, where post-fs-data.sh

@@ -51,6 +51,42 @@ if [ -d /sys/fs/pstore ]; then
   done
 fi
 
+# v3.1: live Magisk snapshot — current state at moment of collection
+mkdir -p "$STAGE/live/magisk-now"
+{
+  echo "=== magisk -V / -v ==="
+  magisk -V 2>&1
+  magisk -v 2>&1
+  echo ""
+  echo "=== installed modules ==="
+  for d in /data/adb/modules/*/; do
+    [ -d "$d" ] || continue
+    name=$(basename "$d")
+    flags=""
+    [ -f "$d/disable" ]    && flags="${flags}DISABLED "
+    [ -f "$d/remove" ]     && flags="${flags}PENDING_REMOVE "
+    [ -f "$d/update" ]     && flags="${flags}UPDATED "
+    [ -f "$d/skip_mount" ] && flags="${flags}SKIP_MOUNT "
+    ver="?"
+    [ -f "$d/module.prop" ] && ver=$(grep "^version=" "$d/module.prop" | cut -d= -f2)
+    echo "  $name $ver $flags"
+  done
+  echo ""
+  echo "=== denylist ==="
+  magisk --denylist ls 2>&1 | head
+  echo ""
+  echo "=== zygisk status ==="
+  magisk --zygisk 2>&1 | head -2
+} > "$STAGE/live/magisk-now/state.txt" 2>&1
+[ -f /cache/magisk.log ]    && tail -300 /cache/magisk.log    > "$STAGE/live/magisk-now/cache-magisk.log" 2>/dev/null
+[ -f /data/adb/magisk.log ] && tail -300 /data/adb/magisk.log > "$STAGE/live/magisk-now/data-magisk.log" 2>/dev/null
+
+# v3.1: SELinux denials snapshot (persists what nh-logcatd watcher captured)
+[ -f /data/local/log/selinux-denials.log ] && \
+  cp /data/local/log/selinux-denials.log "$STAGE/live/" 2>/dev/null
+# Also fresh dmesg-derived denials at moment of collection
+dmesg 2>&1 | grep -E "type=1400|avc:[[:space:]]+denied" | tail -200 > "$STAGE/live/selinux-denials-fresh.log" 2>/dev/null
+
 # v3: kernel runtime state — useful for diagnosing wifi/sensor weirdness
 {
   echo "=== /proc/cmdline ==="

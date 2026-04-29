@@ -1,6 +1,6 @@
 id=nh-logcatd
-name=NetHunter Logcat Daemon v3 (extended forensics for v1.1.1 kernel)
-version=v3.0
-versionCode=3
+name=NetHunter Logcat Daemon v3.1 (Magisk ecosystem + SELinux observability)
+version=v3.1
+versionCode=31
 author=ilyamen
-description=10-layer logging tuned for v1.1.1 kernel (4x bigger ramoops + 4x bigger printk ring 512KB + dmesg timestamps). Persistent logcat 128MB rotating (up from 64MB), 30s dmesg snapshots full 512KB each, all pstore types grabbed (dmesg-/console-/ftrace-/pmsg-ramoops), AUTO-FREEZE panic incidents (last 5 kept forever), boot history (50 boots), boot marker via /dev/pmsg0 (survives panic), module logs, storage budget cap 600MB. Run `nh-collect-logs.sh` to tarball into /sdcard/Download.
+description=12-layer logging for v1.1.1 kernel. Logcat 128MB rotating, 30s dmesg snapshots, all pstore types (dmesg/console/ftrace/pmsg-ramoops), AUTO-FREEZE panic incidents, boot history (50 boots), boot marker via /dev/pmsg0, Magisk daemon log + per-module status snapshot at every boot (module versions, disable/remove flags, post-fs/service.d scripts), SELinux AVC denials watcher (60s polling). Storage budget cap 600MB. Run `nh-collect-logs.sh` to bundle.

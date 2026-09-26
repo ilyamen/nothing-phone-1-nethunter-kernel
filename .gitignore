@@ -20,6 +20,9 @@ local-backup-*/
 partial-live-*/
 spacewar-private-backups/
 
+# Claude Code per-user local settings (permission rules etc.)
+.claude/settings.local.json
+
 # Stock boot.img (user-specific, dumped from their own device)
 stock-boot*.img
 
